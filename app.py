@@ -25,7 +25,7 @@ from database import (
     marcar_como_pago,
     obter_saldo_acumulado,  # <<< saldo acumulado
     STATUS_PAGO, STATUS_PENDENTE, STATUS_ATRASADO,
-    TIPO_NORMAL, TIPO_FIXA, TIPO_PARCELADA
+    TIPO_NORMAL, TIPO_FIXA, TIPO_PARCELADA,
 )
 
 # ── Meses ────────────────────────────────────────────────────────────────────
