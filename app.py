@@ -1,3 +1,4 @@
+"""
 Aplicativo de Gestão de Finanças Pessoais
 Desenvolvido com Streamlit para aprendizado de Python
 """
