@@ -113,16 +113,18 @@ def obter_transacoes(mes=None, ano=None, incluir_futuros=False):
 
     df["data"]            = pd.to_datetime(df["data"], errors="coerce")
     df["data_vencimento"] = pd.to_datetime(df["data_vencimento"], errors="coerce")
+
+    # 🔥 Conversão robusta de valores
     df["valor"] = (
-    df["valor"]
-    .astype(str)
-    .str.replace("R$", "", regex=False)     # remove símbolo de moeda
-    .str.replace(" ", "", regex=False)      # remove espaços
-    .str.replace(".", "", regex=False)      # remove separador de milhar
-    .str.replace(",", ".", regex=False)     # converte vírgula para ponto
-    .str.strip()
-    .astype(float)
-)
+        df["valor"]
+        .astype(str)
+        .str.replace("R$", "", regex=False)
+        .str.replace(" ", "", regex=False)
+        .str.replace(".", "", regex=False)
+        .str.replace(",", ".", regex=False)
+        .str.strip()
+        .astype(float)
+    )
 
     df["id"]              = pd.to_numeric(df["id"], errors="coerce")
     df["parcela_atual"]   = pd.to_numeric(df["parcela_atual"], errors="coerce")
@@ -149,13 +151,21 @@ def obter_transacoes(mes=None, ano=None, incluir_futuros=False):
             (df["data_vencimento"] <= hoje)
         ]
 
-    # 🔥 CORREÇÃO AQUI — lógica correta de mês/ano
+    # 🔥 Lógica correta para mês/ano:
+    # Receitas → sempre usam data real
+    # Despesas pendentes → usam vencimento
     if mes:
-        ref = df["data"].where(df["status"] == STATUS_PAGO, df["data_vencimento"])
+        ref = df["data"].where(
+            (df["status"] == STATUS_PAGO) | (df["tipo"] == "Receita"),
+            df["data_vencimento"]
+        )
         df = df[ref.dt.month == mes]
 
     if ano:
-        ref = df["data"].where(df["status"] == STATUS_PAGO, df["data_vencimento"])
+        ref = df["data"].where(
+            (df["status"] == STATUS_PAGO) | (df["tipo"] == "Receita"),
+            df["data_vencimento"]
+        )
         df = df[ref.dt.year == ano]
 
     return df.reset_index(drop=True)
