@@ -70,13 +70,16 @@ def adicionar_transacao(tipo, valor, categoria, descricao, data):
 
     novo_id = 1 if df.empty else df["id"].max() + 1
 
+    # 🔥 Correção importante: garantir que o valor é float
+    valor = float(valor)
+
     nova_linha = [
         novo_id,
         data,
         tipo,
         categoria,
         descricao,
-        float(valor)
+        valor
     ]
 
     sheet.append_row(nova_linha)
