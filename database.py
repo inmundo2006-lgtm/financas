@@ -93,12 +93,9 @@ def adicionar_transacao(tipo, valor, categoria, descricao, data):
         float(valor)
     ]
 
-    # Escreve diretamente na próxima linha vazia — evita conflito com Tabelas do Google Sheets
+    # insert_row com índice explícito — funciona em gspread v5 e v6
     proxima_linha = total_linhas + 1
-    col_inicio = "A"
-    col_fim = "F"
-    intervalo = f"{col_inicio}{proxima_linha}:{col_fim}{proxima_linha}"
-    sheet.update(range_name=intervalo, values=[nova_linha], value_input_option="USER_ENTERED")
+    sheet.insert_row(nova_linha, index=proxima_linha, value_input_option="USER_ENTERED")
 
     _limpar_cache()
 
