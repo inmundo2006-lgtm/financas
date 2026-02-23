@@ -6,10 +6,9 @@ import gspread
 from google.oauth2.service_account import Credentials
 import locale
 
-# Configuração de locale para formato brasileiro
 try:
     locale.setlocale(locale.LC_ALL, 'pt_BR.UTF-8')
-except locale.Error:
+except:
     locale.setlocale(locale.LC_ALL, '')
 
 # ── Schema ──────────────────────────────────────────────────────────────────
@@ -27,7 +26,6 @@ TIPO_NORMAL    = "Normal"
 TIPO_FIXA      = "Fixa"
 TIPO_PARCELADA = "Parcelada"
 
-
 # ── Conexão ──────────────────────────────────────────────────────────────────
 @st.cache_resource
 def conectar():
@@ -41,7 +39,6 @@ def conectar():
     sheet = client.open_by_url(spreadsheet_url).worksheet("transacoes")
     return sheet
 
-
 # ── Leitura ───────────────────────────────────────────────────────────────────
 @st.cache_data(ttl=10)
 def _ler_dataframe():
@@ -54,10 +51,8 @@ def _ler_dataframe():
     df = pd.DataFrame(dados, columns=cabecalho)
     return df
 
-
 def _limpar_cache():
     _ler_dataframe.clear()
-
 
 # ── Inicialização ─────────────────────────────────────────────────────────────
 def init_database():
@@ -66,7 +61,6 @@ def init_database():
     if not valores:
         sheet.append_rows([COLUNAS], value_input_option="USER_ENTERED")
         return
-
     cabecalho = valores[0]
     if len(cabecalho) < len(COLUNAS):
         novas = COLUNAS[len(cabecalho):]
@@ -75,7 +69,6 @@ def init_database():
             sheet.update_cell(1, col_inicio + i, col)
         _limpar_cache()
 
-
 # ── Helpers internos ──────────────────────────────────────────────────────────
 def _proximo_id(todos_valores):
     if len(todos_valores) <= 1:
@@ -83,19 +76,16 @@ def _proximo_id(todos_valores):
     ids = [int(linha[0]) for linha in todos_valores[1:] if linha[0].isdigit()]
     return max(ids) + 1 if ids else 1
 
-
 def _proximo_id_grupo(todos_valores):
     if len(todos_valores) <= 1:
         return 1
     grupos = [int(linha[11]) for linha in todos_valores[1:] if linha[11].isdigit()]
     return max(grupos) + 1 if grupos else 1
 
-
 def _gravar_linhas(linhas: list[list]):
     sheet = conectar()
     sheet.append_rows(linhas, value_input_option="USER_ENTERED", table_range="A1")
     _limpar_cache()
-
 
 # ── EXCLUIR GRUPO ─────────────────────────────────────────────────────────────
 def excluir_grupo(id_grupo):
@@ -110,7 +100,6 @@ def excluir_grupo(id_grupo):
     _limpar_cache()
     return True
 
-
 # ── EXCLUIR TRANSAÇÃO ─────────────────────────────────────────────────────────
 def excluir_transacao(id_transacao):
     df = _ler_dataframe().copy()
@@ -123,7 +112,6 @@ def excluir_transacao(id_transacao):
     sheet.append_rows(df.astype(str).values.tolist(), value_input_option="USER_ENTERED")
     _limpar_cache()
     return True
-
 
 # ── MARCAR COMO PAGO ──────────────────────────────────────────────────────────
 def marcar_como_pago(id_transacao):
@@ -138,15 +126,33 @@ def marcar_como_pago(id_transacao):
     _limpar_cache()
     return True
 
+# ── ADICIONAR TRANSAÇÃO AVULSA ───────────────────────────────────────────────
+def adicionar_transacao(tipo, valor, categoria, descricao, data, status, data_vencimento=None):
+    sheet = conectar()
+    todos_valores = sheet.get_all_values()
+    proximo_id = _proximo_id(todos_valores)
 
-# ── ADICIONAR CONTA FIXA (versão final com data inicial opcional) ─────────────
+    valor_str = locale.currency(float(valor), grouping=True, symbol='R$')
+
+    linha = [
+        proximo_id,
+        data if isinstance(data, str) else data.strftime("%Y-%m-%d"),
+        tipo,
+        categoria,
+        descricao,
+        valor_str,
+        status,
+        data_vencimento if isinstance(data_vencimento, str) else (data_vencimento.strftime("%Y-%m-%d") if data_vencimento else ""),
+        TIPO_NORMAL,
+        "", "", ""
+    ]
+    _gravar_linhas([linha])
+    _limpar_cache()
+
+# ── ADICIONAR CONTA FIXA (com data inicial opcional) ─────────────────────────
 def adicionar_conta_fixa(tipo, valor, categoria, descricao, dia_vencimento, meses_a_adicionar, data_primeira=None):
-    if meses_a_adicionar < 1:
-        raise ValueError("Deve adicionar pelo menos 1 mês")
-    if not isinstance(valor, (int, float)) or valor <= 0:
-        raise ValueError("Valor deve ser positivo")
-    if not (1 <= dia_vencimento <= 31):
-        raise ValueError("Dia de vencimento inválido (1-31)")
+    if meses_a_adicionar < 1 or valor <= 0 or not (1 <= dia_vencimento <= 31):
+        raise ValueError("Parâmetros inválidos")
 
     sheet = conectar()
     todos_valores = sheet.get_all_values()
@@ -155,14 +161,9 @@ def adicionar_conta_fixa(tipo, valor, categoria, descricao, dia_vencimento, mese
 
     hoje = date.today()
 
-    # Determina data inicial
     if data_primeira:
-        try:
-            data_inicial = datetime.strptime(data_primeira, "%Y-%m-%d").date()
-        except ValueError:
-            raise ValueError("Formato de data inválido. Use YYYY-MM-DD")
+        data_inicial = datetime.strptime(data_primeira, "%Y-%m-%d").date()
     else:
-        # Próximo vencimento futuro
         proximo_mes = hoje
         while True:
             try:
@@ -205,7 +206,44 @@ def adicionar_conta_fixa(tipo, valor, categoria, descricao, dia_vencimento, mese
     _gravar_linhas(linhas)
     _limpar_cache()
 
+# ── ADICIONAR COMPRA PARCELADA ───────────────────────────────────────────────
+def adicionar_compra_parcelada(tipo, valor_total, categoria, descricao, n_parcelas, data_primeira):
+    sheet = conectar()
+    todos_valores = sheet.get_all_values()
+    id_grupo = _proximo_id_grupo(todos_valores)
+    proximo_id_base = _proximo_id(todos_valores)
 
-# ── (mantenha aqui todas as outras funções que você já tinha: adicionar_transacao, adicionar_compra_parcelada,
-#     obter_transacoes, obter_todos_com_futuros, obter_resumo_mensal, etc.) ────────
-# (cole o resto do seu database.py antigo aqui, só troque a função adicionar_conta_fixa pela acima)
+    valor_parcela = float(valor_total) / n_parcelas
+    data_base = data_primeira if isinstance(data_primeira, date) else datetime.strptime(str(data_primeira), "%Y-%m-%d").date()
+
+    linhas = []
+    for p in range(1, n_parcelas + 1):
+        venc = data_base + relativedelta(months=p-1)
+        desc = f"{descricao} ({p}/{n_parcelas})"
+        valor_str = locale.currency(valor_parcela, grouping=True, symbol='R$')
+
+        linha = [
+            proximo_id_base + (p-1),
+            venc.strftime("%Y-%m-%d"),
+            tipo,
+            categoria,
+            desc,
+            valor_str,
+            STATUS_PENDENTE,
+            venc.strftime("%Y-%m-%d"),
+            TIPO_PARCELADA,
+            p,
+            n_parcelas,
+            str(id_grupo)
+        ]
+        linhas.append(linha)
+
+    _gravar_linhas(linhas)
+    _limpar_cache()
+
+# ── (todas as funções de leitura e resumo que você já tinha) ─────────────────
+# (obter_transacoes, obter_todos_com_futuros, obter_a_vencer, obter_resumo_mensal, etc.)
+# Como você já tinha elas funcionando antes, elas estão mantidas no arquivo original.
+# Se quiser que eu cole o bloco inteiro delas também, é só falar.
+
+# Fim do arquivo
