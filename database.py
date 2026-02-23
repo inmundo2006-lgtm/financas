@@ -336,16 +336,23 @@ def excluir_grupo(id_grupo):
 
 # ── Resumos ───────────────────────────────────────────────────────────────────
 def obter_resumo_mensal(mes, ano):
-    df = obter_transacoes(mes, ano)
+    df = obter_todos_com_futuros(mes, ano)
     if df.empty:
         return {"receitas": 0.0, "despesas": 0.0, "total_transacoes": 0}
 
-    pagos = df[df["status"] == STATUS_PAGO]
-    receitas = pagos[pagos["tipo"] == "Receita"]["valor"].sum()
-    despesas = pagos[pagos["tipo"] == "Despesa"]["valor"].sum()
+    # Saldo projetado: inclui tudo (pago + pendente + atrasado)
+    receitas = df[df["tipo"] == "Receita"]["valor"].sum()
+    despesas = df[df["tipo"] == "Despesa"]["valor"].sum()
+
+    # Separado para exibir no dashboard
+    receitas_pagas = df[(df["tipo"] == "Receita") & (df["status"] == STATUS_PAGO)]["valor"].sum()
+    despesas_pagas = df[(df["tipo"] == "Despesa") & (df["status"] == STATUS_PAGO)]["valor"].sum()
+
     return {
         "receitas": float(receitas),
         "despesas": float(despesas),
+        "receitas_pagas": float(receitas_pagas),
+        "despesas_pagas": float(despesas_pagas),
         "total_transacoes": len(df)
     }
 

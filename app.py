@@ -121,13 +121,16 @@ if pagina == "Dashboard":
 
     # ── Métricas ────────────────────────────────────────────────────────────
     c1, c2, c3, c4, c5 = st.columns(5)
-    c1.metric("💵 Receitas",    f"R$ {resumo['receitas']:,.2f}")
-    c2.metric("💸 Despesas",    f"R$ {resumo['despesas']:,.2f}")
-    c3.metric("💰 Saldo",       f"R$ {saldo:,.2f}",
+    c1.metric("💵 Receitas",     f"R$ {resumo['receitas']:,.2f}",
+              help=f"Pagas: R$ {resumo.get('receitas_pagas', resumo['receitas']):,.2f}")
+    c2.metric("💸 Despesas",     f"R$ {resumo['despesas']:,.2f}",
+              help=f"Pagas: R$ {resumo.get('despesas_pagas', resumo['despesas']):,.2f}")
+    c3.metric("💰 Saldo Projetado", f"R$ {saldo:,.2f}",
               delta=f"R$ {saldo:,.2f}" if saldo >= 0 else f"-R$ {abs(saldo):,.2f}",
-              delta_color="normal" if saldo >= 0 else "inverse")
-    c4.metric("⏳ Pendente",    f"R$ {pendente:,.2f}")
-    c5.metric("📝 Transações",  resumo["total_transacoes"])
+              delta_color="normal" if saldo >= 0 else "inverse",
+              help="Inclui pagos + pendentes + atrasados")
+    c4.metric("⏳ Pendente",     f"R$ {pendente:,.2f}")
+    c5.metric("📝 Transações",   resumo["total_transacoes"])
 
     if saldo < 0:
         st.markdown('<div class="alerta-negativo">⚠️ Despesas acima das receitas!</div>',
