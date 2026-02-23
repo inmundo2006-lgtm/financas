@@ -100,10 +100,17 @@ def _preparar_df(df):
             df[col] = ""
     df["data"]            = pd.to_datetime(df["data"], errors="coerce")
     df["data_vencimento"] = pd.to_datetime(df["data_vencimento"], errors="coerce")
-    df["valor"]           = pd.to_numeric(
-        df["valor"].astype(str).str.replace(".", "", regex=False).str.replace(",", ".", regex=False),
-        errors="coerce"
-    )
+    def _normalizar_valor(v):
+        s = str(v).strip()
+        if "," in s and "." in s:
+            # Formato BR: 1.234,56 → remove ponto de milhar, troca vírgula
+            return s.replace(".", "").replace(",", ".")
+        elif "," in s:
+            # Só vírgula: 54,59 → troca por ponto
+            return s.replace(",", ".")
+        # Só ponto ou inteiro: 54.59 ou 400 → mantém
+        return s
+    df["valor"] = pd.to_numeric(df["valor"].astype(str).apply(_normalizar_valor), errors="coerce")
     df["id"]              = pd.to_numeric(df["id"], errors="coerce")
     df["parcela_atual"]   = pd.to_numeric(df["parcela_atual"], errors="coerce")
     df["total_parcelas"]  = pd.to_numeric(df["total_parcelas"], errors="coerce")
