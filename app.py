@@ -28,17 +28,12 @@ from database import (
     TIPO_NORMAL, TIPO_FIXA, TIPO_PARCELADA,
 )
 
-# ── Meses ────────────────────────────────────────────────────────────────────
-MESES_PT = {
-    1: "Janeiro", 2: "Fevereiro", 3: "Março", 4: "Abril",
-    5: "Maio", 6: "Junho", 7: "Julho", 8: "Agosto",
-    9: "Setembro", 10: "Outubro", 11: "Novembro", 12: "Dezembro"
-}
+MESES_PT = {1: "Janeiro", 2: "Fevereiro", 3: "Março", 4: "Abril", 5: "Maio", 6: "Junho", 7: "Julho", 8: "Agosto", 9: "Setembro", 10: "Outubro", 11: "Novembro", 12: "Dezembro"}
 
 st.set_page_config(page_title="Finanças Pessoais", page_icon="💰", layout="wide")
 
-# CSS (mantido igual)
-st.markdown("""<style> ... seu CSS completo ... </style>""", unsafe_allow_html=True)
+# CSS (seu CSS original)
+st.markdown("""<style> ... seu CSS completo aqui ... </style>""", unsafe_allow_html=True)
 
 init_database()
 
@@ -48,14 +43,23 @@ st.markdown("---")
 with st.sidebar:
     st.header("📊 Menu")
     pagina = st.radio("Navegação:", ["Dashboard", "Nova Transação", "Contas Fixas", "Compras Parceladas", "A Vencer", "Histórico", "Relatórios"])
+    st.markdown("---")
+    st.info("💡 **Dica:** Use este app para controlar suas receitas e despesas!")
 
-# (o resto do app.py continua exatamente como você enviou, só a seção "Contas Fixas" foi substituída)
+# DASHBOARD (cole seu bloco original aqui)
+if pagina == "Dashboard":
+    # ... seu código do Dashboard ...
 
+# NOVA TRANSAÇÃO (cole seu bloco original aqui)
+elif pagina == "Nova Transação":
+    # ... seu código ...
+
+# CONTAS FIXAS - VERSÃO CORRIGIDA
 elif pagina == "Contas Fixas":
     st.header("🔄 Cadastrar Conta Fixa Recorrente")
-    st.caption("Gera lançamentos mensais automáticos")
+    st.caption("Gera lançamentos mensais automáticos (água, energia, internet, etc.)")
 
-    with st.form("form_fixa"):
+    with st.form("form_fixa", clear_on_submit=True):
         col1, col2 = st.columns(2)
         with col1:
             tipo_fixa = st.selectbox("Tipo:", ["Despesa", "Receita"])
@@ -63,25 +67,37 @@ elif pagina == "Contas Fixas":
             dia_venc = st.number_input("Dia de vencimento:", min_value=1, max_value=31, value=10, step=1)
         with col2:
             cat_fixa = st.selectbox("Categoria:", ["Contas", "Moradia", "Transporte", "Saúde", "Educação", "Internet", "Telefone", "Outras Despesas"])
-            desc_fixa = st.text_input("Descrição:", placeholder="Ex: Conta de luz")
-            data_primeira_input = st.date_input("Data da primeira parcela (opcional)", value=None, min_value=date.today())
+            desc_fixa = st.text_input("Descrição:", placeholder="Ex: Conta de luz", max_chars=80)
+            data_primeira_input = st.date_input("Data da primeira parcela (opcional)", value=None, min_value=date.today(), format="DD/MM/YYYY")
             meses_fixa = st.slider("Gerar para quantos meses:", 1, 36, 12)
 
-        if st.form_submit_button("🔄 Gerar Lançamentos"):
+        submitted = st.form_submit_button("🔄 Gerar Lançamentos", use_container_width=True)
+
+        if submitted:
             if not desc_fixa.strip() or valor_fixa <= 0:
-                st.error("Preencha todos os campos obrigatórios.")
+                st.error("Preencha descrição e valor.")
             else:
                 data_primeira_str = data_primeira_input.strftime("%Y-%m-%d") if data_primeira_input else None
-                adicionar_conta_fixa(
-                    tipo=tipo_fixa,
-                    valor=valor_fixa,
-                    categoria=cat_fixa,
-                    descricao=desc_fixa.strip(),
-                    dia_vencimento=int(dia_venc),
-                    meses_a_adicionar=meses_fixa,
-                    data_primeira=data_primeira_str
-                )
-                st.success("Lançamentos gerados com sucesso!")
+                with st.spinner(f"Gerando {meses_fixa} lançamentos..."):
+                    adicionar_conta_fixa(
+                        tipo=tipo_fixa,
+                        valor=valor_fixa,
+                        categoria=cat_fixa,
+                        descricao=desc_fixa.strip(),
+                        dia_vencimento=int(dia_venc),
+                        meses_a_adicionar=meses_fixa,
+                        data_primeira=data_primeira_str
+                    )
+                st.success(f"✅ {meses_fixa} lançamentos gerados!")
                 st.rerun()
 
-# (o resto do seu app.py fica igual)
+    # Preview (seu código original)
+    st.markdown("---")
+    st.subheader("📋 Contas Fixas Cadastradas")
+    # ... seu código de preview ...
+
+# (o resto do app.py - Compras Parceladas, A Vencer, Histórico, Relatórios - cole exatamente como você tinha)
+
+# Footer
+st.markdown("---")
+st.markdown("<div style='text-align:center;color:#8892a4;font-size:.85rem;'>💡 Desenvolvido para aprendizado de Python</div>", unsafe_allow_html=True)
