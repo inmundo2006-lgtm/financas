@@ -113,7 +113,17 @@ def obter_transacoes(mes=None, ano=None, incluir_futuros=False):
 
     df["data"]            = pd.to_datetime(df["data"], errors="coerce")
     df["data_vencimento"] = pd.to_datetime(df["data_vencimento"], errors="coerce")
-    df["valor"]           = pd.to_numeric(df["valor"], errors="coerce")
+    df["valor"] = (
+    df["valor"]
+    .astype(str)
+    .str.replace("R$", "", regex=False)     # remove símbolo de moeda
+    .str.replace(" ", "", regex=False)      # remove espaços
+    .str.replace(".", "", regex=False)      # remove separador de milhar
+    .str.replace(",", ".", regex=False)     # converte vírgula para ponto
+    .str.strip()
+    .astype(float)
+)
+
     df["id"]              = pd.to_numeric(df["id"], errors="coerce")
     df["parcela_atual"]   = pd.to_numeric(df["parcela_atual"], errors="coerce")
     df["total_parcelas"]  = pd.to_numeric(df["total_parcelas"], errors="coerce")
