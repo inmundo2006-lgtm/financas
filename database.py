@@ -147,12 +147,15 @@ def obter_transacoes(mes=None, ano=None, incluir_futuros=False):
             (df["data_vencimento"] <= hoje)
         ]
 
-    if mes:
-        ref = df["data_vencimento"].fillna(df["data"])
-        df = df[ref.dt.month == mes]
-    if ano:
-        ref = df["data_vencimento"].fillna(df["data"])
-        df = df[ref.dt.year == ano]
+if mes:
+    ref = df["data"].where(df["status"] == STATUS_PAGO, df["data_vencimento"])
+    df = df[ref.dt.month == mes]
+
+if ano:
+    ref = df["data"].where(df["status"] == STATUS_PAGO, df["data_vencimento"])
+    df = df[ref.dt.year == ano]
+
+   
 
     return df.reset_index(drop=True)
 
