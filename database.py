@@ -175,6 +175,27 @@ def obter_todos_com_futuros(mes=None, ano=None):
     return obter_transacoes(mes=mes, ano=ano, incluir_futuros=True)
 
 
+# ── SALDO ACUMULADO ENTRE MESES ───────────────────────────────────────────────
+def obter_saldo_acumulado(mes, ano):
+    saldo = 0.0
+
+    # percorre todos os meses anteriores
+    for a in range(2020, ano + 1):
+        for m in range(1, 13):
+            if a == ano and m >= mes:
+                break
+
+            resumo = obter_resumo_mensal(m, a)
+            saldo += resumo["receitas"] - resumo["despesas"]
+
+    # adiciona o saldo do mês atual
+    resumo_atual = obter_resumo_mensal(mes, ano)
+    saldo += resumo_atual["receitas"] - resumo_atual["despesas"]
+
+    return saldo
+
+
+# ── A VENCER ───────────────────────────────────────────────────────────────────
 def obter_a_vencer(dias=30):
     df = _ler_dataframe().copy()
     if df.empty:
@@ -201,149 +222,7 @@ def obter_a_vencer(dias=30):
     return pendentes.sort_values("data_vencimento").reset_index(drop=True)
 
 
-def obter_total_pendente_mes(mes, ano):
-    df = obter_todos_com_futuros(mes=mes, ano=ano)
-    if df.empty:
-        return 0.0
-    mask = (df["tipo"] == "Despesa") & (df["status"].isin([STATUS_PENDENTE, STATUS_ATRASADO]))
-    return float(df.loc[mask, "valor"].sum())
-
-
-def adicionar_transacao(tipo, valor, categoria, descricao, data,
-                        status=STATUS_PAGO, data_vencimento=None,
-                        tipo_lancamento=TIPO_NORMAL,
-                        parcela_atual=None, total_parcelas=None, id_grupo=None):
-
-    sheet = conectar()
-    todos_valores = sheet.get_all_values()
-    novo_id = _proximo_id(todos_valores)
-
-    dv = str(data_vencimento) if data_vencimento else str(data)
-
-    nova_linha = [
-        novo_id, str(data), str(tipo), str(categoria), str(descricao), float(valor),
-        str(status), str(dv), str(tipo_lancamento),
-        int(parcela_atual) if parcela_atual else "",
-        int(total_parcelas) if total_parcelas else "",
-        int(id_grupo) if id_grupo else ""
-    ]
-
-    sheet.append_rows([nova_linha], value_input_option="USER_ENTERED", table_range="A1")
-    _limpar_cache()
-
-
-def adicionar_conta_fixa(tipo, valor, categoria, descricao, dia_vencimento, meses=12):
-    sheet = conectar()
-    todos_valores = sheet.get_all_values()
-    novo_id    = _proximo_id(todos_valores)
-    novo_grupo = _proximo_id_grupo(todos_valores)
-
-    hoje = date.today()
-    linhas = []
-
-    for i in range(meses):
-        mes_ref = hoje + relativedelta(months=i)
-        try:
-            venc = date(mes_ref.year, mes_ref.month, dia_vencimento)
-        except:
-            import calendar
-            ultimo = calendar.monthrange(mes_ref.year, mes_ref.month)[1]
-            venc = date(mes_ref.year, mes_ref.month, ultimo)
-
-        status = STATUS_PAGO if venc <= hoje else STATUS_PENDENTE
-
-        linhas.append([
-            novo_id + i, str(hoje), str(tipo), str(categoria),
-            str(descricao), float(valor),
-            str(status), str(venc), TIPO_FIXA,
-            "", "", novo_grupo
-        ])
-
-    sheet.append_rows(linhas, value_input_option="USER_ENTERED", table_range="A1")
-    _limpar_cache()
-
-
-def adicionar_compra_parcelada(tipo, valor_total, categoria, descricao,
-                                n_parcelas, data_primeira):
-
-    sheet = conectar()
-    todos_valores = sheet.get_all_values()
-    novo_id    = _proximo_id(todos_valores)
-    novo_grupo = _proximo_id_grupo(todos_valores)
-
-    valor_parcela = round(valor_total / n_parcelas, 2)
-    hoje  = date.today()
-    linhas = []
-
-    for i in range(n_parcelas):
-        venc   = data_primeira + relativedelta(months=i)
-        status = STATUS_PAGO if venc <= hoje else STATUS_PENDENTE
-        desc_parc = f"{descricao} ({i+1}/{n_parcelas})"
-
-        linhas.append([
-            novo_id + i, str(hoje), str(tipo), str(categoria),
-            str(desc_parc), float(valor_parcela),
-            str(status), str(venc), TIPO_PARCELADA,
-            i + 1, n_parcelas, novo_grupo
-        ])
-
-    sheet.append_rows(linhas, value_input_option="USER_ENTERED", table_range="A1")
-    _limpar_cache()
-
-
-def marcar_como_pago(id_transacao):
-    sheet = conectar()
-    todos_valores = sheet.get_all_values()
-
-    for i, linha in enumerate(todos_valores[1:], start=2):
-        try:
-            if int(linha[0]) == int(id_transacao):
-                sheet.update_cell(i, 7, STATUS_PAGO)
-                _limpar_cache()
-                return True
-        except:
-            pass
-    return False
-
-
-def excluir_transacao(id_transacao):
-    sheet = conectar()
-    df = _ler_dataframe()
-    if df.empty:
-        return False
-
-    df["id"] = pd.to_numeric(df["id"], errors="coerce")
-    match = df[df["id"] == id_transacao]
-    if match.empty:
-        return False
-
-    linha_planilha = match.index[0] + 2
-    sheet.delete_rows(linha_planilha)
-    _limpar_cache()
-    return True
-
-
-def excluir_grupo(id_grupo):
-    sheet = conectar()
-    df = _ler_dataframe()
-    if df.empty:
-        return 0
-
-    df["id_grupo"] = pd.to_numeric(df["id_grupo"], errors="coerce")
-    linhas = df[df["id_grupo"] == id_grupo]
-
-    if linhas.empty:
-        return 0
-
-    indices = sorted(linhas.index.tolist(), reverse=True)
-    for idx in indices:
-        sheet.delete_rows(idx + 2)
-
-    _limpar_cache()
-    return len(indices)
-
-
-# ── Resumos ───────────────────────────────────────────────────────────────────
+# ── RESUMOS ───────────────────────────────────────────────────────────────────
 def obter_resumo_mensal(mes, ano):
     df = obter_todos_com_futuros(mes, ano)
     if df.empty:
