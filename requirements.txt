@@ -1,6 +1,6 @@
 streamlit
 pandas
-plotly
-gspread
-oauth2client
+plotly>=5.18.0
+gspread>=6.1.0
+google-auth>=2.0.0
 python-dateutil
