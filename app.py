@@ -286,18 +286,22 @@ elif pagina == "Nova Transação":
                     st.error(f"⚠️ {e}")
             else:
                 with st.spinner("Salvando..."):
-                    adicionar_transacao(
-                        tipo=tipo,
-                        valor=valor,
-                        categoria=categoria,
-                        descricao=descricao.strip(),
-                        data=str(data)
-                    )
-                st.success(f"✅ {tipo} de **R$ {valor:,.2f}** ({categoria}) adicionada com sucesso!")
-                if tipo == "Receita":
-                    st.balloons()
-                else:
-                    st.snow()
+                    try:
+                        adicionar_transacao(
+                            tipo=tipo,
+                            valor=valor,
+                            categoria=categoria,
+                            descricao=descricao.strip(),
+                            data=str(data)
+                        )
+                        st.success(f"✅ {tipo} de **R$ {valor:,.2f}** ({categoria}) adicionada com sucesso!")
+                        if tipo == "Receita":
+                            st.balloons()
+                        else:
+                            st.snow()
+                    except Exception as e:
+                        st.error(f"❌ Erro ao salvar: {type(e).__name__}")
+                        st.code(str(e), language="text")
 
 
 # ════════════════════════════════════════════════════════════════
