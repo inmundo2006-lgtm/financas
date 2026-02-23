@@ -93,9 +93,8 @@ def adicionar_transacao(tipo, valor, categoria, descricao, data):
         float(valor)
     ]
 
-    # insert_row com índice explícito — funciona em gspread v5 e v6
-    proxima_linha = total_linhas + 1
-    sheet.insert_row(nova_linha, index=proxima_linha, value_input_option="USER_ENTERED")
+    # append_rows com table_range fixo — compatível com v5/v6 e ignora formatação de tabela
+    sheet.append_rows([nova_linha], value_input_option="USER_ENTERED", table_range="A1")
 
     _limpar_cache()
 
