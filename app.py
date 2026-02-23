@@ -316,18 +316,24 @@ elif pagina == "Nova Transação":
 # ════════════════════════════════════════════════════════════════════════════
 elif pagina == "Contas Fixas":
     st.header("🔄 Cadastrar Conta Fixa Recorrente")
-    st.caption("Gera lançamentos mensais automáticos (água, energia, internet, etc.)")
+    st.caption("Gera lançamentos mensais automáticos para despesas (água, energia, internet) ou receitas (salário, aluguel recebido, etc.)")
+
+    # Tipo FORA do form para atualizar categorias dinamicamente
+    tipo_fixa = st.selectbox("Tipo:", ["Despesa", "Receita"], key="tipo_fixa_sel")
+    cats_despesa = ["Contas", "Moradia", "Transporte", "Saúde", "Educação", "Internet", "Telefone", "Outras Despesas"]
+    cats_receita = ["Salário", "Freelance", "Aluguel Recebido", "Pensão Recebida", "Investimentos", "Outras Receitas"]
+    cats_fixa = cats_receita if tipo_fixa == "Receita" else cats_despesa
+
+    placeholder_desc = "Ex: Salário empresa X" if tipo_fixa == "Receita" else "Ex: Conta de luz"
 
     with st.form("form_fixa", clear_on_submit=True):
         col1, col2 = st.columns(2)
         with col1:
-            tipo_fixa  = st.selectbox("Tipo:", ["Despesa", "Receita"])
             valor_fixa = st.number_input("Valor mensal (R$):", min_value=0.01, step=0.01, format="%.2f")
             dia_venc   = st.number_input("Dia de vencimento:", min_value=1, max_value=31, value=10, step=1)
         with col2:
-            cat_fixa   = st.selectbox("Categoria:", ["Contas", "Moradia", "Transporte", "Saúde",
-                                                      "Educação", "Internet", "Telefone", "Outras Despesas"])
-            desc_fixa  = st.text_input("Descrição:", placeholder="Ex: Conta de luz", max_chars=80)
+            cat_fixa   = st.selectbox("Categoria:", cats_fixa)
+            desc_fixa  = st.text_input("Descrição:", placeholder=placeholder_desc, max_chars=80)
             meses_fixa = st.slider("Gerar para quantos meses:", 1, 36, 12)
             data_primeira_input = st.date_input("Início (opcional, deixe vazio para mês atual):",
                                                 value=None, format="DD/MM/YYYY")
@@ -479,10 +485,22 @@ elif pagina == "A Vencer":
                 f'({pd.Timestamp(row["data_vencimento"]).strftime("%d/%m/%Y")})</div>',
                 unsafe_allow_html=True)
             c2.metric("Valor", f"R$ {float(row['valor']):,.2f}")
-            if c3.button("✅ Pagar", key=f"pagar_atr_{row['id']}"):
-                marcar_como_pago(int(row["id"]))
-                st.success("Marcado como pago!")
-                st.rerun()
+            with c3:
+                if st.button("✅ Pagar", key=f"pagar_atr_{row['id']}"):
+                    marcar_como_pago(int(row["id"]))
+                    st.success("Marcado como pago!")
+                    st.rerun()
+                if st.button("✏️ Editar", key=f"editar_atr_{row['id']}"):
+                    st.session_state[f"editando_{row['id']}"] = True
+            if st.session_state.get(f"editando_{row['id']}"):
+                novo = st.number_input(f"Novo valor para {row['descricao']}:", 
+                                        value=float(row['valor']), step=0.01, format="%.2f",
+                                        key=f"nv_atr_{row['id']}")
+                if st.button("✅ Confirmar", key=f"conf_atr_{row['id']}"):
+                    marcar_como_pago(int(row["id"]), novo_valor=novo)
+                    st.session_state.pop(f"editando_{row['id']}", None)
+                    st.success(f"Pago com valor atualizado: R$ {novo:,.2f}")
+                    st.rerun()
 
     if not df_vencer.empty:
         st.subheader(f"📅 Próximos {dias_filtro} dias")
@@ -497,10 +515,22 @@ elif pagina == "A Vencer":
                 f'({pd.Timestamp(row["data_vencimento"]).strftime("%d/%m/%Y")})</div>',
                 unsafe_allow_html=True)
             c2.metric("Valor", f"R$ {float(row['valor']):,.2f}")
-            if c3.button("✅ Pagar", key=f"pagar_{row['id']}"):
-                marcar_como_pago(int(row["id"]))
-                st.success("Marcado como pago!")
-                st.rerun()
+            with c3:
+                if st.button("✅ Pagar", key=f"pagar_{row['id']}"):
+                    marcar_como_pago(int(row["id"]))
+                    st.success("Marcado como pago!")
+                    st.rerun()
+                if st.button("✏️ Editar", key=f"editar_{row['id']}"):
+                    st.session_state[f"editando_{row['id']}"] = True
+            if st.session_state.get(f"editando_{row['id']}"):
+                novo = st.number_input(f"Novo valor para {row['descricao']}:", 
+                                        value=float(row['valor']), step=0.01, format="%.2f",
+                                        key=f"nv_{row['id']}")
+                if st.button("✅ Confirmar", key=f"conf_{row['id']}"):
+                    marcar_como_pago(int(row["id"]), novo_valor=novo)
+                    st.session_state.pop(f"editando_{row['id']}", None)
+                    st.success(f"Pago com valor atualizado: R$ {novo:,.2f}")
+                    st.rerun()
 
     if df_vencer.empty and atrasados.empty:
         st.success("🎉 Nenhuma conta pendente ou em atraso!")
@@ -568,21 +598,46 @@ elif pagina == "Histórico":
 
         st.dataframe(exibir, use_container_width=True, hide_index=True)
 
-        # Marcar como pago
+        # Marcar como pago (com edição de valor)
         pendentes_df = transacoes[transacoes["status"].isin([STATUS_PENDENTE, STATUS_ATRASADO])]
         if not pendentes_df.empty:
             st.markdown("---")
-            st.subheader("✅ Marcar como Pago")
+            st.subheader("✅ Confirmar Pagamento / Recebimento")
+            st.caption("Você pode ajustar o valor antes de confirmar — útil para contas que variam (energia, água) ou salário com reajuste.")
+
             opcoes_pagar = {
                 f"[{int(r['id'])}] {r['descricao']} — R$ {float(r['valor']):,.2f} "
-                f"({pd.to_datetime(r['data_vencimento']).strftime('%d/%m/%Y')})": int(r["id"])
+                f"({pd.to_datetime(r['data_vencimento']).strftime('%d/%m/%Y')})": r
                 for _, r in pendentes_df.iterrows()
             }
-            sel_pagar = st.selectbox("Selecione:", list(opcoes_pagar.keys()))
-            if st.button("✅ Marcar como Pago", use_container_width=True):
-                marcar_como_pago(opcoes_pagar[sel_pagar])
-                st.success("Marcado como pago!")
-                st.rerun()
+            sel_label = st.selectbox("Selecione:", list(opcoes_pagar.keys()))
+            row_sel   = opcoes_pagar[sel_label]
+            valor_orig = float(row_sel["valor"])
+
+            col_val, col_btn = st.columns([2, 1])
+            with col_val:
+                valor_confirmado = st.number_input(
+                    "Valor a confirmar (R$):",
+                    min_value=0.01,
+                    value=valor_orig,
+                    step=0.01,
+                    format="%.2f",
+                    help="Altere se o valor real foi diferente do previsto"
+                )
+                if abs(valor_confirmado - valor_orig) > 0.001:
+                    st.info(f"💡 Diferença: R$ {valor_confirmado - valor_orig:+,.2f} em relação ao valor lançado.")
+            with col_btn:
+                st.write("")
+                st.write("")
+                tipo_acao = "Recebimento" if row_sel["tipo"] == "Receita" else "Pagamento"
+                if st.button(f"✅ Confirmar {tipo_acao}", use_container_width=True, type="primary"):
+                    novo_val = valor_confirmado if abs(valor_confirmado - valor_orig) > 0.001 else None
+                    marcar_como_pago(int(row_sel["id"]), novo_valor=novo_val)
+                    if novo_val:
+                        st.success(f"✅ Confirmado com valor atualizado: R$ {valor_confirmado:,.2f}")
+                    else:
+                        st.success(f"✅ {tipo_acao} confirmado: R$ {valor_orig:,.2f}")
+                    st.rerun()
 
         # Excluir
         st.markdown("---")

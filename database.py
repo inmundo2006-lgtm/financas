@@ -343,11 +343,15 @@ def adicionar_compra_parcelada(tipo, valor_total, categoria, descricao,
     _gravar_linhas(linhas)
 
 
-def marcar_como_pago(id_transacao):
+def marcar_como_pago(id_transacao, novo_valor=None):
+    """Marca como pago e opcionalmente atualiza o valor (para contas que variam)."""
     df = _ler_dataframe().copy()
     if df.empty:
         return False
-    df.loc[df["id"] == str(id_transacao), "status"] = STATUS_PAGO
+    mask = df["id"] == str(id_transacao)
+    df.loc[mask, "status"] = STATUS_PAGO
+    if novo_valor is not None:
+        df.loc[mask, "valor"] = float(novo_valor)
     _reescrever_planilha(df)
     return True
 
