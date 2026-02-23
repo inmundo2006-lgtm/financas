@@ -23,7 +23,7 @@ from database import (
     excluir_transacao,
     excluir_grupo,
     marcar_como_pago,
-    obter_saldo_acumulado,   # 🔥 IMPORTANTE: saldo acumulado
+    obter_saldo_acumulado,  # <<< saldo acumulado
     STATUS_PAGO, STATUS_PENDENTE, STATUS_ATRASADO,
     TIPO_NORMAL, TIPO_FIXA, TIPO_PARCELADA
 )
@@ -123,42 +123,461 @@ if pagina == "Dashboard":
             _ler_dataframe.clear()
             st.rerun()
 
-    # 🔥 RESUMO DO MÊS
     resumo  = obter_resumo_mensal(mes_sel, ano_sel)
     pendente = obter_total_pendente_mes(mes_sel, ano_sel)
 
-    # 🔥 SALDO INICIAL (acumulado até o mês anterior)
+    # saldo do mês (apenas receitas - despesas do mês)
+    saldo_mes = resumo["receitas"] - resumo["despesas"]
+
+    # saldo inicial acumulado até o mês anterior
     if mes_sel == 1:
         saldo_inicial = obter_saldo_acumulado(12, ano_sel - 1)
     else:
         saldo_inicial = obter_saldo_acumulado(mes_sel - 1, ano_sel)
 
-    # 🔥 SALDO DO MÊS
-    saldo_mes = resumo["receitas"] - resumo["despesas"]
-
-    # 🔥 SALDO FINAL ACUMULADO
-    saldo_final = saldo_inicial + saldo_mes
+    # saldo projetado/acumulado: saldo inicial + saldo do mês
+    saldo = saldo_inicial + saldo_mes
 
     # ── Métricas ────────────────────────────────────────────────────────────
-    c1, c2, c3, c4, c5, c6 = st.columns(6)
-
-    c1.metric("💵 Receitas", f"R$ {resumo['receitas']:,.2f}",
+    c1, c2, c3, c4, c5 = st.columns(5)
+    c1.metric("💵 Receitas",     f"R$ {resumo['receitas']:,.2f}",
               help=f"Pagas: R$ {resumo.get('receitas_pagas', resumo['receitas']):,.2f}")
-
-    c2.metric("💸 Despesas", f"R$ {resumo['despesas']:,.2f}",
+    c2.metric("💸 Despesas",     f"R$ {resumo['despesas']:,.2f}",
               help=f"Pagas: R$ {resumo.get('despesas_pagas', resumo['despesas']):,.2f}")
-
-    c3.metric("📘 Saldo Inicial", f"R$ {saldo_inicial:,.2f}",
-              help="Saldo acumulado até o mês anterior")
-
-    c4.metric("💰 Saldo do Mês", f"R$ {saldo_mes:,.2f}",
+    c3.metric("💰 Saldo Projetado", f"R$ {saldo:,.2f}",
               delta=f"R$ {saldo_mes:,.2f}" if saldo_mes >= 0 else f"-R$ {abs(saldo_mes):,.2f}",
-              delta_color="normal" if saldo_mes >= 0 else "inverse")
+              delta_color="normal" if saldo_mes >= 0 else "inverse",
+              help="Saldo acumulado (mês anterior + mês atual)")
+    c4.metric("⏳ Pendente",     f"R$ {pendente:,.2f}")
+    c5.metric("📝 Transações",   resumo["total_transacoes"])
 
-    c5.metric("📗 Saldo Final (Acumulado)", f"R$ {saldo_final:,.2f}",
-              help="Saldo inicial + saldo do mês")
+    if saldo < 0:
+        st.markdown('<div class="alerta-negativo">⚠️ Despesas acima das receitas!</div>',
+                    unsafe_allow_html=True)
 
-    c6.metric("⏳ Pendente", f"R$ {pendente:,.2f}")
+    # ── Alertas de vencimento ────────────────────────────────────────────────
+    vencer_7  = obter_a_vencer(7)
+    vencer_30 = obter_a_vencer(30)
+
+    if not vencer_7.empty:
+        st.markdown("---")
+        st.subheader("🚨 Vencem nos próximos 7 dias")
+        for _, row in vencer_7.iterrows():
+            dias_restantes = (pd.Timestamp(row["data_vencimento"]).date() - date.today()).days
+            label = "hoje" if dias_restantes == 0 else f"em {dias_restantes} dia(s)"
+            st.markdown(
+                f'<div class="card-vencer">⚠️ <b>{row["descricao"]}</b> — '
+                f'R$ {float(row["valor"]):,.2f} — vence <b>{label}</b> '
+                f'({pd.Timestamp(row["data_vencimento"]).strftime("%d/%m/%Y")})</div>',
+                unsafe_allow_html=True
+            )
+    elif not vencer_30.empty:
+        st.markdown("---")
+        st.info(f"📅 {len(vencer_30)} conta(s) vencem nos próximos 30 dias.")
+
+    st.markdown("---")
+
+    if resumo["total_transacoes"] > 0:
+        col1, col2 = st.columns(2)
+
+        with col1:
+            st.subheader("📊 Despesas por Categoria")
+            gastos = obter_gastos_por_categoria(mes_sel, ano_sel)
+            if not gastos.empty:
+                fig = px.pie(gastos, values="total", names="categoria",
+                             title="Distribuição de Despesas", hole=0.45,
+                             color_discrete_sequence=px.colors.qualitative.Set3)
+                fig.update_traces(textposition="inside", textinfo="percent+label")
+                fig.update_layout(paper_bgcolor="rgba(0,0,0,0)",
+                                  plot_bgcolor="rgba(0,0,0,0)",
+                                  font_color="#e2e8f0", showlegend=False)
+                st.plotly_chart(fig, use_container_width=True)
+            else:
+                st.info("Nenhuma despesa paga neste período")
+
+        with col2:
+            st.subheader("📈 Evolução Diária Acumulada")
+            transacoes = obter_transacoes(mes_sel, ano_sel)
+            if not transacoes.empty:
+                pagas = transacoes[transacoes["status"] == STATUS_PAGO].copy()
+                pagas["dia"] = pagas["data_vencimento"].fillna(pagas["data"]).dt.day
+                max_dia = int(pagas["dia"].max()) if not pagas.empty else 1
+
+                rec_dia = (pagas[pagas["tipo"] == "Receita"]
+                           .groupby("dia")["valor"].sum()
+                           .reindex(range(1, max_dia + 1), fill_value=0)
+                           .cumsum().reset_index().rename(columns={"valor": "Receitas"}))
+                desp_dia = (pagas[pagas["tipo"] == "Despesa"]
+                            .groupby("dia")["valor"].sum()
+                            .reindex(range(1, max_dia + 1), fill_value=0)
+                            .cumsum().reset_index().rename(columns={"valor": "Despesas"}))
+                ev = rec_dia.merge(desp_dia, on="dia")
+
+                fig = go.Figure()
+                fig.add_trace(go.Scatter(x=ev["dia"], y=ev["Receitas"],
+                                         mode="lines+markers", name="Receitas",
+                                         line=dict(color="#00c896", width=2.5),
+                                         fill="tozeroy", fillcolor="rgba(0,200,150,.08)"))
+                fig.add_trace(go.Scatter(x=ev["dia"], y=ev["Despesas"],
+                                         mode="lines+markers", name="Despesas",
+                                         line=dict(color="#ff4f6d", width=2.5),
+                                         fill="tozeroy", fillcolor="rgba(255,79,109,.08)"))
+                fig.update_layout(title="Acumulado no Mês", xaxis_title="Dia",
+                                  yaxis_title="Valor (R$)", hovermode="x unified",
+                                  paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+                                  font_color="#e2e8f0",
+                                  xaxis=dict(gridcolor="#2a2d3a"),
+                                  yaxis=dict(gridcolor="#2a2d3a"))
+                st.plotly_chart(fig, use_container_width=True)
+            else:
+                st.info("Nenhuma transação paga neste período")
+    else:
+        st.info("🚀 Nenhuma transação ainda. Comece adicionando uma nova transação!")
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# NOVA TRANSAÇÃO (avulsa)
+# ════════════════════════════════════════════════════════════════════════════
+elif pagina == "Nova Transação":
+    st.header("➕ Adicionar Transação Avulsa")
+    st.caption("Para contas fixas mensais ou compras parceladas, use os menus específicos.")
+
+    tipo = st.selectbox("Tipo:", ["Receita", "Despesa"])
+    categorias = (["Salário", "Freelance", "Investimentos", "Presente", "Outras Receitas"]
+                  if tipo == "Receita"
+                  else ["Alimentação", "Transporte", "Moradia", "Saúde", "Educação",
+                        "Lazer", "Compras", "Contas", "Outras Despesas"])
+
+    st.markdown("---")
+
+    with st.form("form_avulso", clear_on_submit=True):
+        col1, col2 = st.columns(2)
+        with col1:
+            valor = st.number_input("Valor (R$):", min_value=0.01, step=0.01, format="%.2f")
+            data  = st.date_input("Data:", value=datetime.now(), format="DD/MM/YYYY")
+        with col2:
+            categoria = st.selectbox("Categoria:", categorias)
+            descricao = st.text_input("Descrição:", placeholder="Ex: Supermercado...", max_chars=100)
+            status    = st.selectbox("Status:", [STATUS_PAGO, STATUS_PENDENTE])
+
+        data_venc = None
+        if status == STATUS_PENDENTE:
+            data_venc = st.date_input("Data de vencimento:", value=datetime.now(), format="DD/MM/YYYY")
+
+        submitted = st.form_submit_button("💾 Salvar", use_container_width=True)
+        if submitted:
+            erros = []
+            if not descricao.strip():
+                erros.append("Adicione uma descrição.")
+            if valor <= 0:
+                erros.append("Valor precisa ser maior que R$ 0,00.")
+            if erros:
+                for e in erros:
+                    st.error(f"⚠️ {e}")
+            else:
+                try:
+                    adicionar_transacao(
+                        tipo=tipo, valor=valor, categoria=categoria,
+                        descricao=descricao.strip(), data=str(data),
+                        status=status,
+                        data_vencimento=str(data_venc) if data_venc else None
+                    )
+                    st.success(f"✅ {tipo} de **R$ {valor:,.2f}** salva com sucesso!")
+                    if tipo == "Receita":
+                        st.balloons()
+                    else:
+                        st.snow()
+                except Exception as e:
+                    st.error(f"❌ Erro: {type(e).__name__}")
+                    st.code(str(e))
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# CONTAS FIXAS
+# ════════════════════════════════════════════════════════════════════════════
+elif pagina == "Contas Fixas":
+    st.header("🔄 Cadastrar Conta Fixa Recorrente")
+    st.caption("Gera lançamentos mensais automáticos (água, energia, internet, etc.)")
+
+    with st.form("form_fixa", clear_on_submit=True):
+        col1, col2 = st.columns(2)
+        with col1:
+            tipo_fixa  = st.selectbox("Tipo:", ["Despesa", "Receita"])
+            valor_fixa = st.number_input("Valor mensal (R$):", min_value=0.01,
+                                         step=0.01, format="%.2f")
+            dia_venc   = st.number_input("Dia de vencimento:", min_value=1, max_value=31,
+                                          value=10, step=1)
+        with col2:
+            cats_fixa  = ["Contas", "Moradia", "Transporte", "Saúde",
+                          "Educação", "Internet", "Telefone", "Outras Despesas"]
+            cat_fixa   = st.selectbox("Categoria:", cats_fixa)
+            desc_fixa  = st.text_input("Descrição:", placeholder="Ex: Conta de luz", max_chars=80)
+            meses_fixa = st.slider("Gerar para quantos meses:", 1, 24, 12)
+
+        submitted_fixa = st.form_submit_button("🔄 Gerar Lançamentos", use_container_width=True)
+
+        if submitted_fixa:
+            if not desc_fixa.strip():
+                st.error("⚠️ Adicione uma descrição.")
+            elif valor_fixa <= 0:
+                st.error("⚠️ Valor precisa ser maior que R$ 0,00.")
+            else:
+                try:
+                    with st.spinner(f"Gerando {meses_fixa} lançamentos..."):
+                        adicionar_conta_fixa(
+                            tipo=tipo_fixa, valor=valor_fixa,
+                            categoria=cat_fixa, descricao=desc_fixa.strip(),
+                            dia_vencimento=int(dia_venc), meses=meses_fixa
+                        )
+                    st.success(f"✅ {meses_fixa} lançamentos de **{desc_fixa}** gerados com sucesso!")
+                    st.info("💡 Os meses já vencidos foram marcados como **Pago** automaticamente.")
+                except Exception as e:
+                    st.error(f"❌ Erro: {type(e).__name__}")
+                    st.code(str(e))
+
+    # ── Preview das contas fixas já cadastradas ─────────────────────────────
+    st.markdown("---")
+    st.subheader("📋 Contas Fixas Cadastradas")
+    df_todos = obter_todos_com_futuros()
+    if not df_todos.empty:
+        fixas = df_todos[df_todos["tipo_lancamento"] == TIPO_FIXA].copy()
+        if not fixas.empty:
+            fixas["data_vencimento"] = pd.to_datetime(fixas["data_vencimento"])
+            resumo_fixas = (fixas.groupby(["id_grupo", "descricao", "categoria"])
+                            .agg(total_parcelas_=("id", "count"),
+                                 valor=("valor", "first"),
+                                 pendentes=("status", lambda x: (x == STATUS_PENDENTE).sum()))
+                            .reset_index())
+            for _, row in resumo_fixas.iterrows():
+                col1, col2, col3 = st.columns([3, 1, 1])
+                col1.write(f"**{row['descricao']}** ({row['categoria']})")
+                col2.write(f"R$ {row['valor']:,.2f}/mês")
+                col3.write(f"⏳ {int(row['pendentes'])} pendentes")
+        else:
+            st.info("Nenhuma conta fixa cadastrada ainda.")
+    else:
+        st.info("Nenhuma conta fixa cadastrada ainda.")
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# COMPRAS PARCELADAS
+# ════════════════════════════════════════════════════════════════════════════
+elif pagina == "Compras Parceladas":
+    st.header("💳 Registrar Compra Parcelada")
+    st.caption("Divide o valor total em parcelas mensais automaticamente.")
+
+    with st.form("form_parcela", clear_on_submit=True):
+        col1, col2 = st.columns(2)
+        with col1:
+            tipo_parc    = st.selectbox("Tipo:", ["Despesa", "Receita"])
+            valor_total  = st.number_input("Valor total (R$):", min_value=0.01,
+                                            step=0.01, format="%.2f")
+            n_parcelas   = st.number_input("Número de parcelas:", min_value=2,
+                                            max_value=60, value=12, step=1)
+        with col2:
+            cats_parc    = ["Compras", "Eletrônicos", "Móveis", "Viagem",
+                            "Saúde", "Educação", "Outras Despesas"]
+            cat_parc     = st.selectbox("Categoria:", cats_parc)
+            desc_parc    = st.text_input("Descrição:", placeholder="Ex: Notebook Samsung", max_chars=80)
+            primeira_venc = st.date_input("Vencimento da 1ª parcela:",
+                                           value=datetime.now(), format="DD/MM/YYYY")
+
+        valor_parcela = valor_total / n_parcelas if n_parcelas > 0 else 0
+        st.info(f"💡 Cada parcela: **R$ {valor_parcela:,.2f}**")
+
+        submitted_parc = st.form_submit_button("💳 Gerar Parcelas", use_container_width=True)
+
+        if submitted_parc:
+            if not desc_parc.strip():
+                st.error("⚠️ Adicione uma descrição.")
+            elif valor_total <= 0:
+                st.error("⚠️ Valor precisa ser maior que R$ 0,00.")
+            else:
+                try:
+                    with st.spinner(f"Gerando {n_parcelas} parcelas..."):
+                        adicionar_compra_parcelada(
+                            tipo=tipo_parc, valor_total=valor_total,
+                            categoria=cat_parc, descricao=desc_parc.strip(),
+                            n_parcelas=int(n_parcelas), data_primeira=primeira_venc
+                        )
+                    st.success(f"✅ {n_parcelas}x de R$ {valor_parcela:,.2f} geradas para **{desc_parc}**!")
+                except Exception as e:
+                    st.error(f"❌ Erro: {type(e).__name__}")
+                    st.code(str(e))
+
+    # ── Parcelas em aberto ───────────────────────────────────────────────────
+    st.markdown("---")
+    st.subheader("📋 Compras Parceladas em Aberto")
+    df_todos = obter_todos_com_futuros()
+    if not df_todos.empty:
+        parc = df_todos[df_todos["tipo_lancamento"] == TIPO_PARCELADA].copy()
+        parc = parc[parc["status"] != STATUS_PAGO]
+        if not parc.empty:
+            parc["data_vencimento"] = pd.to_datetime(parc["data_vencimento"])
+            grupos = parc.groupby("id_grupo")
+            for gid, grupo in grupos:
+                desc  = grupo["descricao"].iloc[0].rsplit(" (", 1)[0]
+                total = grupo["total_parcelas"].iloc[0]
+                pend  = len(grupo)
+                prox  = grupo["data_vencimento"].min().strftime("%d/%m/%Y")
+                val   = grupo["valor"].iloc[0]
+                c1, c2, c3, c4 = st.columns([3, 1, 1, 1])
+                c1.write(f"**{desc}** ({grupo['categoria'].iloc[0]})")
+                c2.write(f"R$ {val:,.2f}/parc.")
+                c3.write(f"⏳ {pend}/{int(total)} restantes")
+                c4.write(f"📅 próx. {prox}")
+        else:
+            st.info("Nenhuma parcela em aberto.")
+    else:
+        st.info("Nenhuma compra parcelada cadastrada ainda.")
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# A VENCER
+# ════════════════════════════════════════════════════════════════════════════
+elif pagina == "A Vencer":
+    st.header("⏳ Contas a Vencer")
+
+    col1, col2 = st.columns(2)
+    with col1:
+        dias_filtro = st.selectbox("Mostrar contas para:", [7, 15, 30, 60, 90],
+                                   index=2, format_func=lambda x: f"próximos {x} dias")
+    with col2:
+        tipo_filtro = st.selectbox("Tipo:", ["Todos", "Despesa", "Receita"])
+
+    df_vencer = obter_a_vencer(dias_filtro)
+
+    if tipo_filtro != "Todos":
+        df_vencer = df_vencer[df_vencer["tipo"] == tipo_filtro]
+
+    # Inclui também atrasados
+    df_todos = obter_todos_com_futuros()
+    if not df_todos.empty:
+        atrasados = df_todos[df_todos["status"] == STATUS_ATRASADO].copy()
+        if tipo_filtro != "Todos":
+            atrasados = atrasados[atrasados["tipo"] == tipo_filtro]
+    else:
+        atrasados = pd.DataFrame()
+
+    # ── Atrasados ────────────────────────────────────────────────────────────
+    if not atrasados.empty:
+        st.subheader("🚨 Em Atraso")
+        total_atraso = atrasados["valor"].sum()
+        st.error(f"Total em atraso: **R$ {float(total_atraso):,.2f}**")
+
+        for _, row in atrasados.iterrows():
+            dias_atr = (date.today() - pd.Timestamp(row["data_vencimento"]).date()).days
+            c1, c2, c3 = st.columns([4, 2, 1])
+            c1.markdown(
+                f'<div class="card-atrasado">🔴 <b>{row["descricao"]}</b> — '
+                f'{row["categoria"]} — venceu há {dias_atr} dia(s) '
+                f'({pd.Timestamp(row["data_vencimento"]).strftime("%d/%m/%Y")})</div>',
+                unsafe_allow_html=True
+            )
+            c2.metric("Valor", f"R$ {float(row['valor']):,.2f}")
+            if c3.button("✅ Pagar", key=f"pagar_atr_{row['id']}"):
+                marcar_como_pago(int(row["id"]))
+                st.success("Marcado como pago!")
+                st.rerun()
+
+    # ── A vencer ─────────────────────────────────────────────────────────────
+    if not df_vencer.empty:
+        st.subheader(f"📅 Próximos {dias_filtro} dias")
+        total_vencer = df_vencer["valor"].sum()
+        st.warning(f"Total a vencer: **R$ {float(total_vencer):,.2f}**")
+
+        for _, row in df_vencer.iterrows():
+            dias_rest = (pd.Timestamp(row["data_vencimento"]).date() - date.today()).days
+            label_tipo = ""
+            if row.get("tipo_lancamento") == TIPO_FIXA:
+                label_tipo = ' <span class="badge-fixa">● FIXA</span>'
+            elif row.get("tipo_lancamento") == TIPO_PARCELADA:
+                label_tipo = ' <span class="badge-parcela">● PARCELA</span>'
+
+            c1, c2, c3 = st.columns([4, 2, 1])
+            dias_label = "Vence hoje!" if dias_rest == 0 else f"em {dias_rest} dia(s)"
+            c1.markdown(
+                f'<div class="card-vencer">🟡 <b>{row["descricao"]}</b>{label_tipo} — '
+                f'{row["categoria"]} — vence {dias_label} '
+                f'({pd.Timestamp(row["data_vencimento"]).strftime("%d/%m/%Y")})</div>',
+                unsafe_allow_html=True
+            )
+            c2.metric("Valor", f"R$ {float(row['valor']):,.2f}")
+            if c3.button("✅ Pagar", key=f"pagar_{row['id']}"):
+                try:
+                    marcar_como_pago(int(row["id"]))
+                    st.success("Marcado como pago!")
+                    st.rerun()
+                except Exception as e:
+                    st.error(str(e))
+
+    if df_vencer.empty and atrasados.empty:
+        st.success("🎉 Nenhuma conta pendente ou em atraso!")
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# HISTÓRICO
+# ════════════════════════════════════════════════════════════════════════════
+elif pagina == "Histórico":
+    st.header("📜 Histórico de Transações")
+
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        mes_filtro = st.selectbox("Mês:", ["Todos"] + list(range(1, 13)),
+                                   format_func=lambda x: "Todos" if x == "Todos" else MESES_PT[x])
+    with col2:
+        ano_filtro = st.selectbox("Ano:", ["Todos"] + list(range(2020, 2031)),
+                                   format_func=lambda x: "Todos" if x == "Todos" else str(x))
+    with col3:
+        tipo_filtro = st.selectbox("Tipo:", ["Todos", "Receita", "Despesa"])
+    with col4:
+        status_filtro = st.selectbox("Status:", ["Todos", STATUS_PAGO, STATUS_PENDENTE, STATUS_ATRASADO])
+
+    mostrar_futuros = st.checkbox("Incluir lançamentos futuros", value=True)
+
+    mes = None if mes_filtro == "Todos" else mes_filtro
+    ano = None if ano_filtro == "Todos" else ano_filtro
+
+    transacoes = (obter_todos_com_futuros(mes, ano) if mostrar_futuros
+                  else obter_transacoes(mes, ano))
+
+    if tipo_filtro != "Todos":
+        transacoes = transacoes[transacoes["tipo"] == tipo_filtro]
+    if status_filtro != "Todos":
+        transacoes = transacoes[transacoes["status"] == status_filtro]
+
+    if not transacoes.empty:
+        total_rec  = transacoes[transacoes["tipo"] == "Receita"]["valor"].sum()
+        total_desp = transacoes[transacoes["tipo"] == "Despesa"]["valor"].sum()
+
+        c1, c2, c3 = st.columns(3)
+        c1.metric("📋 Registros", len(transacoes))
+        c2.metric("💵 Receitas", f"R$ {float(total_rec):,.2f}")
+        c3.metric("💸 Despesas", f"R$ {float(total_desp):,.2f}")
+
+        st.markdown("---")
+
+        exibir = transacoes.copy()
+        exibir["Data Venc."] = pd.to_datetime(exibir["data_vencimento"]).dt.strftime("%d/%m/%Y")
+        exibir["Data"]       = pd.to_datetime(exibir["data"]).dt.strftime("%d/%m/%Y")
+        exibir["Valor"]      = exibir["valor"].apply(lambda x: f"R$ {float(x):,.2f}")
+
+        # Badge de status
+        def fmt_status(s):
+            if s == STATUS_PAGO:     return "✅ Pago"
+            if s == STATUS_PENDENTE: return "⏳ Pendente"
+            if s == STATUS_ATRASADO: return "🔴 Atrasado"
+            return s
+
+        exibir["Status"] = exibir["status"].apply(fmt_status)
+        exibir["Tipo Lanç."] = exibir["tipo_lancamento"]
+        exibir = exibir[["id", "Data", "Data Venc.", "tipo", "categoria",
+                          "descricao", "Valor", "Status", "Tipo Lanç."]]
+        exibir.columns = ["ID", "Data", "Vencimento", "Tipo", "Categoria",
+                          "Descrição", "Valor", "Status", "Modalidade"]
+
+        st.dataframe(exibir, use_container_width=True, hide_index=True)
+
         # ── Marcar como pago em lote ─────────────────────────────────────────
         pendentes_df = transacoes[transacoes["status"].isin([STATUS_PENDENTE, STATUS_ATRASADO])]
         if not pendentes_df.empty:
@@ -304,4 +723,3 @@ st.markdown(
     "Streamlit + Google Sheets + Plotly</div>",
     unsafe_allow_html=True
 )
-
