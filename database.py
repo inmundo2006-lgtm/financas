@@ -10,7 +10,7 @@ import locale
 try:
     locale.setlocale(locale.LC_ALL, 'pt_BR.UTF-8')
 except locale.Error:
-    locale.setlocale(locale.LC_ALL, '')  # fallback
+    locale.setlocale(locale.LC_ALL, '')
 
 # ── Schema ──────────────────────────────────────────────────────────────────
 COLUNAS = [
@@ -139,13 +139,8 @@ def marcar_como_pago(id_transacao):
     return True
 
 
-# ── ADICIONAR CONTA FIXA (versão atualizada) ─────────────────────────────────
+# ── ADICIONAR CONTA FIXA (versão final com data inicial opcional) ─────────────
 def adicionar_conta_fixa(tipo, valor, categoria, descricao, dia_vencimento, meses_a_adicionar, data_primeira=None):
-    """
-    Cria lançamentos recorrentes.
-    - Se data_primeira for fornecida (ex: '2026-08-10'), inicia exatamente nela.
-    - Se None, inicia no próximo vencimento futuro baseado no dia_vencimento.
-    """
     if meses_a_adicionar < 1:
         raise ValueError("Deve adicionar pelo menos 1 mês")
     if not isinstance(valor, (int, float)) or valor <= 0:
@@ -160,7 +155,7 @@ def adicionar_conta_fixa(tipo, valor, categoria, descricao, dia_vencimento, mese
 
     hoje = date.today()
 
-    # Determina a data inicial
+    # Determina data inicial
     if data_primeira:
         try:
             data_inicial = datetime.strptime(data_primeira, "%Y-%m-%d").date()
@@ -176,7 +171,7 @@ def adicionar_conta_fixa(tipo, valor, categoria, descricao, dia_vencimento, mese
                     data_inicial = candidato
                     break
             except ValueError:
-                pass  # dia inválido no mês → pula
+                pass
             proximo_mes += relativedelta(months=1)
 
     linhas = []
@@ -200,7 +195,6 @@ def adicionar_conta_fixa(tipo, valor, categoria, descricao, dia_vencimento, mese
         ]
         linhas.append(linha)
 
-        # Próximo mês, mantendo o dia (com correção para meses curtos)
         data_atual += relativedelta(months=1)
         if data_atual.day != dia_vencimento:
             try:
@@ -212,5 +206,6 @@ def adicionar_conta_fixa(tipo, valor, categoria, descricao, dia_vencimento, mese
     _limpar_cache()
 
 
-# ── (mantenha aqui as outras funções que você já tem: adicionar_transacao, adicionar_compra_parcelada,
-#     obter_transacoes, obter_resumo_mensal, etc.) ────────────────────────────────
+# ── (mantenha aqui todas as outras funções que você já tinha: adicionar_transacao, adicionar_compra_parcelada,
+#     obter_transacoes, obter_todos_com_futuros, obter_resumo_mensal, etc.) ────────
+# (cole o resto do seu database.py antigo aqui, só troque a função adicionar_conta_fixa pela acima)
