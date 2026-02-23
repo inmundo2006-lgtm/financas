@@ -98,7 +98,7 @@ def adicionar_transacao(tipo, valor, categoria, descricao, data):
     col_inicio = "A"
     col_fim = "F"
     intervalo = f"{col_inicio}{proxima_linha}:{col_fim}{proxima_linha}"
-    sheet.update(intervalo, [nova_linha], value_input_option="USER_ENTERED")
+    sheet.update(range_name=intervalo, values=[nova_linha], value_input_option="USER_ENTERED")
 
     _limpar_cache()
 
