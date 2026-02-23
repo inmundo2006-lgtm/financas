@@ -142,15 +142,15 @@ if pagina == "Dashboard":
                     unsafe_allow_html=True)
 
     # ── Card "Quanto posso gastar hoje?" ────────────────────────────────────
-    disponivel, saldo_atual, compromissos = obter_disponivel_gastar()
+    disponivel, saldo_atual, compromissos = obter_disponivel_gastar(mes_sel, ano_sel)
     if disponivel >= 0:
         cor   = "#00c896"
         emoji = "✅"
-        msg   = f"Você pode gastar até **R$ {disponivel:,.2f}** hoje sem comprometer seus compromissos futuros."
+        msg   = f"Você pode gastar até **R$ {disponivel:,.2f}** hoje sem comprometer as contas de {MESES_PT[mes_sel]}."
     else:
         cor   = "#ff4f6d"
         emoji = "⚠️"
-        msg   = f"Seus compromissos futuros superam seu saldo atual em **R$ {abs(disponivel):,.2f}**. Cuidado com novos gastos!"
+        msg   = f"As contas de {MESES_PT[mes_sel]} superam seu saldo atual em **R$ {abs(disponivel):,.2f}**. Cuidado com novos gastos!"
 
     st.markdown(
         f"""
