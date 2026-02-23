@@ -101,6 +101,29 @@ def _gravar_linhas(linhas: list[list]):
     _limpar_cache()
 
 
+def excluir_grupo(id_grupo):
+    """Exclui todas as transações pertencentes a um grupo (parceladas ou fixas)."""
+    df = _ler_dataframe().copy()
+    if df.empty:
+        return False
+
+    # Remove todas as linhas com o id_grupo informado
+    df = df[df["id_grupo"] != id_grupo]
+
+    # Regrava tudo na planilha
+    sheet = conectar()
+    sheet.clear()
+    sheet.append_row(COLUNAS)
+
+    # Converte tudo para string antes de enviar
+    linhas = df.astype(str).values.tolist()
+    sheet.append_rows(linhas, value_input_option="USER_ENTERED")
+
+    _limpar_cache()
+    return True
+
+
+
 # ── CRUD Principal ────────────────────────────────────────────────────────────
 def obter_transacoes(mes=None, ano=None, incluir_futuros=False):
     df = _ler_dataframe().copy()
