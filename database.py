@@ -39,7 +39,7 @@ def conectar():
 
 
 # ── Leitura ───────────────────────────────────────────────────────────────────
-@st.cache_data(ttl=60)
+@st.cache_data(ttl=10)
 def _ler_dataframe():
     sheet = conectar()
     valores = sheet.get_all_values()
