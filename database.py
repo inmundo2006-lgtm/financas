@@ -67,13 +67,22 @@ def obter_transacoes(mes=None, ano=None):
 
 def adicionar_transacao(tipo, valor, categoria, descricao, data):
     sheet = conectar()
-    df = _ler_dataframe()
 
-    if df.empty or df["id"].eq("").all():
+    # Busca fresca direto da API (sem cache) para calcular próxima linha real
+    todos_valores = sheet.get_all_values()
+    total_linhas = len(todos_valores)  # inclui cabeçalho
+
+    # Calcula novo ID a partir das linhas existentes
+    if total_linhas <= 1:
         novo_id = 1
     else:
-        ids = pd.to_numeric(df["id"], errors="coerce").dropna()
-        novo_id = int(ids.max()) + 1 if not ids.empty else 1
+        ids_existentes = []
+        for linha in todos_valores[1:]:  # pula cabeçalho
+            try:
+                ids_existentes.append(int(linha[0]))
+            except (ValueError, IndexError):
+                pass
+        novo_id = max(ids_existentes) + 1 if ids_existentes else 1
 
     nova_linha = [
         novo_id,
@@ -83,7 +92,14 @@ def adicionar_transacao(tipo, valor, categoria, descricao, data):
         str(descricao),
         float(valor)
     ]
-    sheet.append_row(nova_linha, value_input_option="USER_ENTERED")
+
+    # Escreve diretamente na próxima linha vazia — evita conflito com Tabelas do Google Sheets
+    proxima_linha = total_linhas + 1
+    col_inicio = "A"
+    col_fim = "F"
+    intervalo = f"{col_inicio}{proxima_linha}:{col_fim}{proxima_linha}"
+    sheet.update(intervalo, [nova_linha], value_input_option="USER_ENTERED")
+
     _limpar_cache()
 
 
