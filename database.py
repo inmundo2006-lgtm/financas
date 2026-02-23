@@ -6,9 +6,6 @@ import gspread
 from google.oauth2.service_account import Credentials
 
 # ── Schema ──────────────────────────────────────────────────────────────────
-# id | data | tipo | categoria | descricao | valor |
-# status | data_vencimento | tipo_lancamento | parcela_atual | total_parcelas | id_grupo
-
 COLUNAS = [
     "id", "data", "tipo", "categoria", "descricao", "valor",
     "status", "data_vencimento", "tipo_lancamento",
@@ -62,7 +59,7 @@ def init_database():
     if not valores:
         sheet.append_rows([COLUNAS], value_input_option="USER_ENTERED")
         return
-    # Migração: adiciona colunas novas se a planilha é antiga (6 colunas)
+
     cabecalho = valores[0]
     if len(cabecalho) < len(COLUNAS):
         novas = COLUNAS[len(cabecalho):]
@@ -80,7 +77,7 @@ def _proximo_id(todos_valores):
     for linha in todos_valores[1:]:
         try:
             ids.append(int(linha[0]))
-        except (ValueError, IndexError):
+        except:
             pass
     return max(ids) + 1 if ids else 1
 
@@ -93,13 +90,12 @@ def _proximo_id_grupo(todos_valores):
         try:
             if linha[11]:
                 grupos.append(int(linha[11]))
-        except (ValueError, IndexError):
+        except:
             pass
     return max(grupos) + 1 if grupos else 1
 
 
 def _gravar_linhas(linhas: list[list]):
-    """Grava uma ou mais linhas no final da planilha."""
     sheet = conectar()
     sheet.append_rows(linhas, value_input_option="USER_ENTERED", table_range="A1")
     _limpar_cache()
@@ -111,7 +107,6 @@ def obter_transacoes(mes=None, ano=None, incluir_futuros=False):
     if df.empty:
         return df
 
-    # Garante colunas novas mesmo em planilhas antigas
     for col in COLUNAS:
         if col not in df.columns:
             df[col] = ""
@@ -125,11 +120,9 @@ def obter_transacoes(mes=None, ano=None, incluir_futuros=False):
     df["id_grupo"]        = pd.to_numeric(df["id_grupo"], errors="coerce")
     df = df.dropna(subset=["data", "valor"])
 
-    # Preenche campos opcionais
     df["status"]          = df["status"].replace("", STATUS_PAGO).fillna(STATUS_PAGO)
     df["tipo_lancamento"] = df["tipo_lancamento"].replace("", TIPO_NORMAL).fillna(TIPO_NORMAL)
 
-    # Atualiza status atrasado automaticamente (só local, sem regravar)
     hoje = pd.Timestamp(date.today())
     mask_atrasado = (
         (df["status"] == STATUS_PENDENTE) &
@@ -139,7 +132,6 @@ def obter_transacoes(mes=None, ano=None, incluir_futuros=False):
     df.loc[mask_atrasado, "status"] = STATUS_ATRASADO
 
     if not incluir_futuros:
-        # Por padrão exclui lançamentos futuros ainda pendentes
         df = df[
             (df["status"] == STATUS_PAGO) |
             (df["status"] == STATUS_ATRASADO) |
@@ -147,26 +139,23 @@ def obter_transacoes(mes=None, ano=None, incluir_futuros=False):
             (df["data_vencimento"] <= hoje)
         ]
 
-if mes:
-    ref = df["data"].where(df["status"] == STATUS_PAGO, df["data_vencimento"])
-    df = df[ref.dt.month == mes]
+    # 🔥 CORREÇÃO AQUI — lógica correta de mês/ano
+    if mes:
+        ref = df["data"].where(df["status"] == STATUS_PAGO, df["data_vencimento"])
+        df = df[ref.dt.month == mes]
 
-if ano:
-    ref = df["data"].where(df["status"] == STATUS_PAGO, df["data_vencimento"])
-    df = df[ref.dt.year == ano]
-
-   
+    if ano:
+        ref = df["data"].where(df["status"] == STATUS_PAGO, df["data_vencimento"])
+        df = df[ref.dt.year == ano]
 
     return df.reset_index(drop=True)
 
 
 def obter_todos_com_futuros(mes=None, ano=None):
-    """Retorna tudo incluindo lançamentos futuros pendentes."""
     return obter_transacoes(mes=mes, ano=ano, incluir_futuros=True)
 
 
 def obter_a_vencer(dias=30):
-    """Retorna lançamentos pendentes que vencem nos próximos N dias."""
     df = _ler_dataframe().copy()
     if df.empty:
         return pd.DataFrame(columns=COLUNAS)
@@ -189,12 +178,10 @@ def obter_a_vencer(dias=30):
         (df["data_vencimento"] <= limite)
     ].copy()
 
-    pendentes = pendentes.sort_values("data_vencimento")
-    return pendentes.reset_index(drop=True)
+    return pendentes.sort_values("data_vencimento").reset_index(drop=True)
 
 
 def obter_total_pendente_mes(mes, ano):
-    """Total de despesas pendentes/atrasadas no mês."""
     df = obter_todos_com_futuros(mes=mes, ano=ano)
     if df.empty:
         return 0.0
@@ -206,6 +193,7 @@ def adicionar_transacao(tipo, valor, categoria, descricao, data,
                         status=STATUS_PAGO, data_vencimento=None,
                         tipo_lancamento=TIPO_NORMAL,
                         parcela_atual=None, total_parcelas=None, id_grupo=None):
+
     sheet = conectar()
     todos_valores = sheet.get_all_values()
     novo_id = _proximo_id(todos_valores)
@@ -225,7 +213,6 @@ def adicionar_transacao(tipo, valor, categoria, descricao, data,
 
 
 def adicionar_conta_fixa(tipo, valor, categoria, descricao, dia_vencimento, meses=12):
-    """Gera lançamentos mensais recorrentes para os próximos N meses."""
     sheet = conectar()
     todos_valores = sheet.get_all_values()
     novo_id    = _proximo_id(todos_valores)
@@ -238,13 +225,13 @@ def adicionar_conta_fixa(tipo, valor, categoria, descricao, dia_vencimento, mese
         mes_ref = hoje + relativedelta(months=i)
         try:
             venc = date(mes_ref.year, mes_ref.month, dia_vencimento)
-        except ValueError:
-            # Dia inválido para o mês (ex: 31 em fevereiro) → último dia
+        except:
             import calendar
             ultimo = calendar.monthrange(mes_ref.year, mes_ref.month)[1]
             venc = date(mes_ref.year, mes_ref.month, ultimo)
 
         status = STATUS_PAGO if venc <= hoje else STATUS_PENDENTE
+
         linhas.append([
             novo_id + i, str(hoje), str(tipo), str(categoria),
             str(descricao), float(valor),
@@ -258,7 +245,7 @@ def adicionar_conta_fixa(tipo, valor, categoria, descricao, dia_vencimento, mese
 
 def adicionar_compra_parcelada(tipo, valor_total, categoria, descricao,
                                 n_parcelas, data_primeira):
-    """Divide o valor total em N parcelas mensais a partir da primeira data."""
+
     sheet = conectar()
     todos_valores = sheet.get_all_values()
     novo_id    = _proximo_id(todos_valores)
@@ -272,6 +259,7 @@ def adicionar_compra_parcelada(tipo, valor_total, categoria, descricao,
         venc   = data_primeira + relativedelta(months=i)
         status = STATUS_PAGO if venc <= hoje else STATUS_PENDENTE
         desc_parc = f"{descricao} ({i+1}/{n_parcelas})"
+
         linhas.append([
             novo_id + i, str(hoje), str(tipo), str(categoria),
             str(desc_parc), float(valor_parcela),
@@ -284,17 +272,16 @@ def adicionar_compra_parcelada(tipo, valor_total, categoria, descricao,
 
 
 def marcar_como_pago(id_transacao):
-    """Atualiza o status de uma transação para Pago."""
     sheet = conectar()
     todos_valores = sheet.get_all_values()
 
     for i, linha in enumerate(todos_valores[1:], start=2):
         try:
             if int(linha[0]) == int(id_transacao):
-                sheet.update_cell(i, 7, STATUS_PAGO)  # coluna G = status
+                sheet.update_cell(i, 7, STATUS_PAGO)
                 _limpar_cache()
                 return True
-        except (ValueError, IndexError):
+        except:
             pass
     return False
 
@@ -317,7 +304,6 @@ def excluir_transacao(id_transacao):
 
 
 def excluir_grupo(id_grupo):
-    """Exclui todas as transações de um grupo (parcelas ou conta fixa)."""
     sheet = conectar()
     df = _ler_dataframe()
     if df.empty:
@@ -325,10 +311,10 @@ def excluir_grupo(id_grupo):
 
     df["id_grupo"] = pd.to_numeric(df["id_grupo"], errors="coerce")
     linhas = df[df["id_grupo"] == id_grupo]
+
     if linhas.empty:
         return 0
 
-    # Deleta de baixo para cima para não deslocar índices
     indices = sorted(linhas.index.tolist(), reverse=True)
     for idx in indices:
         sheet.delete_rows(idx + 2)
@@ -343,11 +329,9 @@ def obter_resumo_mensal(mes, ano):
     if df.empty:
         return {"receitas": 0.0, "despesas": 0.0, "total_transacoes": 0}
 
-    # Saldo projetado: inclui tudo (pago + pendente + atrasado)
     receitas = df[df["tipo"] == "Receita"]["valor"].sum()
     despesas = df[df["tipo"] == "Despesa"]["valor"].sum()
 
-    # Separado para exibir no dashboard
     receitas_pagas = df[(df["tipo"] == "Receita") & (df["status"] == STATUS_PAGO)]["valor"].sum()
     despesas_pagas = df[(df["tipo"] == "Despesa") & (df["status"] == STATUS_PAGO)]["valor"].sum()
 
@@ -364,7 +348,9 @@ def obter_gastos_por_categoria(mes, ano):
     df = obter_transacoes(mes, ano)
     if df.empty:
         return pd.DataFrame()
+
     despesas = df[(df["tipo"] == "Despesa") & (df["status"] == STATUS_PAGO)]
     if despesas.empty:
         return pd.DataFrame()
+
     return despesas.groupby("categoria")["valor"].sum().reset_index(name="total")
