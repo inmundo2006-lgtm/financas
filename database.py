@@ -30,7 +30,6 @@ def conectar():
 def init_database():
     sheet = conectar()
 
-    # Se a planilha estiver vazia, cria o cabeçalho
     if len(sheet.get_all_values()) == 0:
         sheet.append_row(["id", "data", "tipo", "categoria", "descricao", "valor"])
 
@@ -70,16 +69,14 @@ def adicionar_transacao(tipo, valor, categoria, descricao, data):
 
     novo_id = 1 if df.empty else df["id"].max() + 1
 
-    # 🔥 Correção importante: garantir que o valor é float
-    valor = float(valor)
-
+    # 🔥 Correção DEFINITIVA: converter tudo para string
     nova_linha = [
-        novo_id,
-        data,
-        tipo,
-        categoria,
-        descricao,
-        valor
+        str(novo_id),
+        str(data),
+        str(tipo),
+        str(categoria),
+        str(descricao),
+        str(float(valor))  # garante que não é Decimal
     ]
 
     sheet.append_row(nova_linha)
@@ -98,7 +95,7 @@ def excluir_transacao(id_transacao):
     if df.empty or id_transacao not in df["id"].values:
         return False
 
-    linha = df.index[df["id"] == id_transacao][0] + 2  # +2 por causa do cabeçalho
+    linha = df.index[df["id"] == id_transacao][0] + 2
     sheet.delete_rows(linha)
 
     return True
