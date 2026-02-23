@@ -3,10 +3,6 @@ import pandas as pd
 import gspread
 from google.oauth2.service_account import Credentials
 
-# ============================
-# 1. CONEXÃO COM GOOGLE SHEETS
-# ============================
-
 def conectar():
     creds_info = st.secrets["google_service_account"]
 
@@ -23,20 +19,12 @@ def conectar():
     return sheet
 
 
-# ============================
-# 2. INICIALIZAR BANCO
-# ============================
-
 def init_database():
     sheet = conectar()
 
     if len(sheet.get_all_values()) == 0:
         sheet.append_row(["id", "data", "tipo", "categoria", "descricao", "valor"])
 
-
-# ============================
-# 3. OBTER TODAS AS TRANSAÇÕES
-# ============================
 
 def obter_transacoes(mes=None, ano=None):
     sheet = conectar()
@@ -58,33 +46,29 @@ def obter_transacoes(mes=None, ano=None):
     return df
 
 
-# ============================
-# 4. ADICIONAR TRANSAÇÃO
-# ============================
-
 def adicionar_transacao(tipo, valor, categoria, descricao, data):
     sheet = conectar()
     dados = sheet.get_all_records()
     df = pd.DataFrame(dados)
 
-    novo_id = 1 if df.empty else df["id"].max() + 1
+    # 🔥 Correção DEFINITIVA: garantir que o ID é numérico
+    if df.empty:
+        novo_id = 1
+    else:
+        df["id"] = pd.to_numeric(df["id"], errors="coerce")
+        novo_id = int(df["id"].max() + 1)
 
-    # 🔥 Correção DEFINITIVA: converter tudo para string
     nova_linha = [
-        str(novo_id),
+        novo_id,
         str(data),
         str(tipo),
         str(categoria),
         str(descricao),
-        str(float(valor))  # garante que não é Decimal
+        float(valor)
     ]
 
     sheet.append_row(nova_linha)
 
-
-# ============================
-# 5. EXCLUIR TRANSAÇÃO
-# ============================
 
 def excluir_transacao(id_transacao):
     sheet = conectar()
@@ -100,10 +84,6 @@ def excluir_transacao(id_transacao):
 
     return True
 
-
-# ============================
-# 6. RESUMO MENSAL
-# ============================
 
 def obter_resumo_mensal(mes, ano):
     df = obter_transacoes(mes, ano)
@@ -124,10 +104,6 @@ def obter_resumo_mensal(mes, ano):
         "total_transacoes": len(df)
     }
 
-
-# ============================
-# 7. GASTOS POR CATEGORIA
-# ============================
 
 def obter_gastos_por_categoria(mes, ano):
     df = obter_transacoes(mes, ano)
