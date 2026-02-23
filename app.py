@@ -106,7 +106,7 @@ with st.sidebar:
 if pagina == "Dashboard":
     st.header("📈 Dashboard Financeiro")
 
-    col1, col2 = st.columns(2)
+    col1, col2, col3 = st.columns([3, 3, 1])
     with col1:
         mes_sel = st.selectbox("Mês:", range(1, 13),
                                index=datetime.now().month - 1,
@@ -114,6 +114,13 @@ if pagina == "Dashboard":
     with col2:
         ano_sel = st.selectbox("Ano:", range(2020, 2031),
                                index=list(range(2020, 2031)).index(datetime.now().year))
+    with col3:
+        st.write("")
+        st.write("")
+        if st.button("🔄 Atualizar", use_container_width=True, help="Força atualização dos dados"):
+            from database import _ler_dataframe
+            _ler_dataframe.clear()
+            st.rerun()
 
     resumo  = obter_resumo_mensal(mes_sel, ano_sel)
     pendente = obter_total_pendente_mes(mes_sel, ano_sel)
