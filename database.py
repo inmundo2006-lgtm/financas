@@ -219,6 +219,55 @@ def obter_saldo_acumulado():
                  pagos[pagos["tipo"] == "Despesa"]["valor"].sum())
 
 
+def obter_disponivel_gastar():
+    """
+    Quanto o usuário pode gastar hoje sem comprometer compromissos futuros.
+    Fórmula: Saldo acumulado pago até hoje − Total de despesas pendentes/atrasadas futuras
+    """
+    df = _preparar_df(_ler_dataframe().copy())
+    if df.empty:
+        return 0.0, 0.0, 0.0
+
+    hoje = pd.Timestamp(date.today())
+
+    # Saldo real: tudo que já foi pago até hoje
+    pagos = df[df["status"] == STATUS_PAGO]
+    saldo_atual = float(
+        pagos[pagos["tipo"] == "Receita"]["valor"].sum() -
+        pagos[pagos["tipo"] == "Despesa"]["valor"].sum()
+    )
+
+    # Compromissos futuros: despesas pendentes já lançadas
+    futuros = df[
+        (df["tipo"] == "Despesa") &
+        (df["status"].isin([STATUS_PENDENTE, STATUS_ATRASADO]))
+    ]
+    total_compromissos = float(futuros["valor"].sum())
+
+    disponivel = saldo_atual - total_compromissos
+    return disponivel, saldo_atual, total_compromissos
+
+
+def obter_saldo_anterior(mes, ano):
+    """Soma de todos os lançamentos PAGOS antes do mês/ano selecionado."""
+    df = _preparar_df(_ler_dataframe().copy())
+    if df.empty:
+        return 0.0
+
+    # Referência de data: usa data_vencimento se disponível, senão data
+    ref = df["data_vencimento"].fillna(df["data"])
+    data_corte = pd.Timestamp(year=ano, month=mes, day=1)
+
+    # Apenas lançamentos pagos ANTES do início do mês selecionado
+    anteriores = df[(df["status"] == STATUS_PAGO) & (ref < data_corte)]
+    if anteriores.empty:
+        return 0.0
+
+    receitas = anteriores[anteriores["tipo"] == "Receita"]["valor"].sum()
+    despesas = anteriores[anteriores["tipo"] == "Despesa"]["valor"].sum()
+    return float(receitas - despesas)
+
+
 def adicionar_transacao(tipo, valor, categoria, descricao, data,
                         status=STATUS_PAGO, data_vencimento=None):
     sheet = conectar()

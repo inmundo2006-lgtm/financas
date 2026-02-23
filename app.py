@@ -21,6 +21,8 @@ from database import (
     obter_resumo_mensal,
     obter_gastos_por_categoria,
     obter_saldo_acumulado,
+    obter_saldo_anterior,
+    obter_disponivel_gastar,
     excluir_transacao,
     excluir_grupo,
     marcar_como_pago,
@@ -106,25 +108,72 @@ if pagina == "Dashboard":
             _ler_dataframe.clear()
             st.rerun()
 
-    resumo   = obter_resumo_mensal(mes_sel, ano_sel)
-    pendente = obter_total_pendente_mes(mes_sel, ano_sel)
-    saldo    = resumo["receitas"] - resumo["despesas"]
+    resumo         = obter_resumo_mensal(mes_sel, ano_sel)
+    pendente       = obter_total_pendente_mes(mes_sel, ano_sel)
+    saldo_anterior = obter_saldo_anterior(mes_sel, ano_sel)
+    saldo_mes      = resumo["receitas"] - resumo["despesas"]
+    saldo_final    = saldo_anterior + saldo_mes
+
+    # Linha 1: saldo anterior + métricas do mês
+    if saldo_anterior != 0:
+        cor_ant = "normal" if saldo_anterior >= 0 else "inverse"
+        st.info(
+            f"💼 **Saldo transportado do período anterior:** "
+            f"R$ {saldo_anterior:,.2f}"
+        )
 
     c1, c2, c3, c4, c5 = st.columns(5)
     c1.metric("💵 Receitas", f"R$ {resumo['receitas']:,.2f}",
               help=f"Pagas: R$ {resumo.get('receitas_pagas', 0):,.2f}")
     c2.metric("💸 Despesas", f"R$ {resumo['despesas']:,.2f}",
               help=f"Pagas: R$ {resumo.get('despesas_pagas', 0):,.2f}")
-    c3.metric("💰 Saldo Projetado", f"R$ {saldo:,.2f}",
-              delta=f"R$ {saldo:,.2f}" if saldo >= 0 else f"-R$ {abs(saldo):,.2f}",
-              delta_color="normal" if saldo >= 0 else "inverse",
-              help="Inclui pagos + pendentes + atrasados")
-    c4.metric("⏳ Pendente",   f"R$ {pendente:,.2f}")
-    c5.metric("📝 Transações", resumo["total_transacoes"])
+    c3.metric("💰 Saldo do Mês", f"R$ {saldo_mes:,.2f}",
+              delta=f"R$ {saldo_mes:,.2f}" if saldo_mes >= 0 else f"-R$ {abs(saldo_mes):,.2f}",
+              delta_color="normal" if saldo_mes >= 0 else "inverse",
+              help="Receitas − Despesas do mês (inclui pendentes)")
+    c4.metric("🏦 Saldo Acumulado", f"R$ {saldo_final:,.2f}",
+              delta=f"R$ {saldo_final:,.2f}" if saldo_final >= 0 else f"-R$ {abs(saldo_final):,.2f}",
+              delta_color="normal" if saldo_final >= 0 else "inverse",
+              help="Saldo anterior + saldo do mês atual")
+    c5.metric("⏳ Pendente",   f"R$ {pendente:,.2f}")
 
-    if saldo < 0:
+    if saldo_mes < 0:
         st.markdown('<div class="alerta-negativo">⚠️ Despesas acima das receitas!</div>',
                     unsafe_allow_html=True)
+
+    # ── Card "Quanto posso gastar hoje?" ────────────────────────────────────
+    disponivel, saldo_atual, compromissos = obter_disponivel_gastar()
+    if disponivel >= 0:
+        cor   = "#00c896"
+        emoji = "✅"
+        msg   = f"Você pode gastar até **R$ {disponivel:,.2f}** hoje sem comprometer seus compromissos futuros."
+    else:
+        cor   = "#ff4f6d"
+        emoji = "⚠️"
+        msg   = f"Seus compromissos futuros superam seu saldo atual em **R$ {abs(disponivel):,.2f}**. Cuidado com novos gastos!"
+
+    st.markdown(
+        f"""
+        <div style="background:{'rgba(0,200,150,.08)' if disponivel >= 0 else 'rgba(255,79,109,.08)'};
+                    border:1px solid {cor};
+                    border-radius:12px;
+                    padding:1rem 1.5rem;
+                    margin-top:.75rem;">
+            <div style="font-size:1.1rem;font-weight:700;color:{cor};">
+                {emoji} Quanto posso gastar hoje?
+            </div>
+            <div style="font-size:2rem;font-weight:800;color:{cor};margin:.25rem 0;">
+                R$ {disponivel:,.2f}
+            </div>
+            <div style="color:#8892a4;font-size:.85rem;">{msg}</div>
+            <div style="color:#8892a4;font-size:.8rem;margin-top:.5rem;">
+                💰 Saldo atual (pago): R$ {saldo_atual:,.2f} &nbsp;|&nbsp;
+                📋 Compromissos pendentes: R$ {compromissos:,.2f}
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
 
     # Alertas de vencimento
     vencer_7  = obter_a_vencer(7)
