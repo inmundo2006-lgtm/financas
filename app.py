@@ -11,10 +11,6 @@ from database import (
     obter_gastos_por_categoria
 )
 
-# ============================
-# CONFIGURAÇÃO DO APP
-# ============================
-
 st.set_page_config(
     page_title="Gestão Financeira",
     page_icon="💰",
@@ -23,17 +19,12 @@ st.set_page_config(
 
 init_database()
 
-# ============================
-# MENU LATERAL
-# ============================
-
 st.sidebar.title("📊 Menu")
 pagina = st.sidebar.radio("Navegação:", ["Dashboard", "Nova Transação", "Histórico", "Relatórios"])
-
 st.sidebar.info("💡 Dica: Use este app para controlar suas receitas e despesas!")
 
 # ============================
-# PÁGINA: NOVA TRANSAÇÃO
+# NOVA TRANSAÇÃO
 # ============================
 
 if pagina == "Nova Transação":
@@ -45,25 +36,27 @@ if pagina == "Nova Transação":
     data = st.date_input("Data:", value=date.today())
     st.write(f"📅 Data selecionada: {data.strftime('%d/%m/%Y')}")
 
-    categoria = st.selectbox("Categoria:", [
-        "Salário", "Alimentação", "Transporte", "Lazer", "Moradia",
-        "Saúde", "Educação", "Investimentos", "Outros"
-    ])
+    categoria = st.selectbox(
+        "Categoria:",
+        ["Salário", "Alimentação", "Transporte", "Lazer", "Moradia",
+         "Saúde", "Educação", "Investimentos", "Outros"]
+    )
 
     descricao = st.text_input("Descrição:")
 
     if st.button("Salvar Transação"):
+        # 🔥 AQUI É A CORREÇÃO: em vez de data.strftime(...), mandamos str(data)
         adicionar_transacao(
             tipo=tipo,
             valor=float(valor),
             categoria=categoria,
             descricao=descricao,
-            data=str(data)  # 🔥 CORREÇÃO DEFINITIVA
+            data=str(data)   # <--- ponto chave
         )
         st.success("Transação adicionada com sucesso!")
 
 # ============================
-# PÁGINA: HISTÓRICO
+# HISTÓRICO
 # ============================
 
 elif pagina == "Histórico":
@@ -85,7 +78,7 @@ elif pagina == "Histórico":
                 st.error("ID não encontrado.")
 
 # ============================
-# PÁGINA: DASHBOARD
+# DASHBOARD
 # ============================
 
 elif pagina == "Dashboard":
@@ -109,7 +102,7 @@ elif pagina == "Dashboard":
         st.plotly_chart(fig, use_container_width=True)
 
 # ============================
-# PÁGINA: RELATÓRIOS
+# RELATÓRIOS
 # ============================
 
 elif pagina == "Relatórios":
