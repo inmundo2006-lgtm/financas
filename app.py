@@ -262,9 +262,9 @@ elif pagina == "Nova Transação":
                     )
                     st.success(f"✅ {tipo} de **R$ {valor:,.2f}** salva com sucesso!")
                     if tipo == "Receita":
-                            st.balloons()
-                        else:
-                            st.snow()
+                        st.balloons()
+                    else:
+                        st.snow()
                 except Exception as e:
                     st.error(f"❌ Erro: {type(e).__name__}")
                     st.code(str(e))
