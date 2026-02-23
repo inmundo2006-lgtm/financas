@@ -101,11 +101,7 @@ def _proximo_id_grupo(todos_valores):
 def _gravar_linhas(linhas: list[list]):
     """Grava uma ou mais linhas no final da planilha."""
     sheet = conectar()
-    todos_valores = sheet.get_all_values()
-    proximo = len(todos_valores) + 1
-    # Grava em lote usando update direto para evitar problemas com append
-    intervalo = f"A{proximo}:L{proximo + len(linhas) - 1}"
-    sheet.update(range_name=intervalo, values=linhas, value_input_option="USER_ENTERED")
+    sheet.append_rows(linhas, value_input_option="USER_ENTERED", table_range="A1")
     _limpar_cache()
 
 
@@ -221,9 +217,7 @@ def adicionar_transacao(tipo, valor, categoria, descricao, data,
         int(id_grupo) if id_grupo else ""
     ]
 
-    proxima = len(todos_valores) + 1
-    intervalo = f"A{proxima}:L{proxima}"
-    sheet.update(range_name=intervalo, values=[nova_linha], value_input_option="USER_ENTERED")
+    sheet.append_rows([nova_linha], value_input_option="USER_ENTERED", table_range="A1")
     _limpar_cache()
 
 
@@ -255,9 +249,7 @@ def adicionar_conta_fixa(tipo, valor, categoria, descricao, dia_vencimento, mese
             "", "", novo_grupo
         ])
 
-    proxima = len(todos_valores) + 1
-    intervalo = f"A{proxima}:L{proxima + len(linhas) - 1}"
-    sheet.update(range_name=intervalo, values=linhas, value_input_option="USER_ENTERED")
+    sheet.append_rows(linhas, value_input_option="USER_ENTERED", table_range="A1")
     _limpar_cache()
 
 
@@ -284,9 +276,7 @@ def adicionar_compra_parcelada(tipo, valor_total, categoria, descricao,
             i + 1, n_parcelas, novo_grupo
         ])
 
-    proxima = len(todos_valores) + 1
-    intervalo = f"A{proxima}:L{proxima + len(linhas) - 1}"
-    sheet.update(range_name=intervalo, values=linhas, value_input_option="USER_ENTERED")
+    sheet.append_rows(linhas, value_input_option="USER_ENTERED", table_range="A1")
     _limpar_cache()
 
 
