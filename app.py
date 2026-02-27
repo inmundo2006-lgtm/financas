@@ -71,6 +71,63 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
+
+# ════════════════════════════════════════════════════════════════════════════
+# LOGIN
+# ════════════════════════════════════════════════════════════════════════════
+def _verificar_credenciais(usuario: str, senha: str) -> bool:
+    try:
+        u = st.secrets["carlos"]["101378"]
+        s = st.secrets["carlos"]["101378"]
+        return usuario.strip() == u and senha == s
+    except KeyError:
+        # Se ainda não configurou o secrets, aceita credenciais padrão
+        return usuario.strip() == "admin" and senha == "admin123"
+
+
+def _tela_login():
+    col_esq, col_centro, col_dir = st.columns([1, 1.2, 1])
+    with col_centro:
+        st.markdown("<br><br>", unsafe_allow_html=True)
+        st.markdown(
+            """
+            <div style="text-align:center; margin-bottom: 1.5rem;">
+                <div style="font-size:3rem;">💰</div>
+                <h2 style="margin:0; color:#e2e8f0;">Finanças Pessoais</h2>
+                <p style="color:#8892a4; margin-top:.25rem;">Faça login para continuar</p>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+
+        with st.form("form_login"):
+            usuario = st.text_input("👤 Usuário:", placeholder="Digite seu usuário")
+            senha   = st.text_input("🔒 Senha:", type="password", placeholder="Digite sua senha")
+            entrar  = st.form_submit_button("Entrar →", use_container_width=True, type="primary")
+
+            if entrar:
+                if _verificar_credenciais(usuario, senha):
+                    st.session_state["autenticado"] = True
+                    st.rerun()
+                else:
+                    st.error("❌ Usuário ou senha incorretos.")
+
+        st.markdown(
+            "<p style='text-align:center; color:#4a5568; font-size:.8rem; margin-top:1rem;'>"
+            "🔐 Acesso restrito ao proprietário</p>",
+            unsafe_allow_html=True
+        )
+
+
+if "autenticado" not in st.session_state:
+    st.session_state["autenticado"] = False
+
+if not st.session_state["autenticado"]:
+    _tela_login()
+    st.stop()
+
+
+# ── A partir daqui só chega quem está logado ────────────────────────────────
 init_database()
 
 st.title("💰 Gestão de Finanças Pessoais")
@@ -84,6 +141,10 @@ with st.sidebar:
     ])
     st.markdown("---")
     st.info("💡 **Dica:** Use este app para controlar suas receitas e despesas!")
+    st.markdown("---")
+    if st.button("🚪 Sair", use_container_width=True):
+        st.session_state["autenticado"] = False
+        st.rerun()
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -273,15 +334,20 @@ elif pagina == "Nova Transação":
         col1, col2 = st.columns(2)
         with col1:
             valor     = st.number_input("Valor (R$):", min_value=0.01, step=0.01, format="%.2f")
-            data      = st.date_input("Data:", value=datetime.now(), format="DD/MM/YYYY")
+            data      = st.date_input("Data do lançamento:", value=datetime.now(), format="DD/MM/YYYY")
         with col2:
             categoria = st.selectbox("Categoria:", categorias)
             descricao = st.text_input("Descrição:", placeholder="Ex: Supermercado...", max_chars=100)
             status    = st.selectbox("Status:", [STATUS_PAGO, STATUS_PENDENTE])
 
-        data_venc = None
-        if status == STATUS_PENDENTE:
-            data_venc = st.date_input("Data de vencimento:", value=datetime.now(), format="DD/MM/YYYY")
+        col3, col4 = st.columns(2)
+        with col3:
+            usa_vencimento = st.checkbox("Informar data de vencimento", value=True,
+                                         help="Marque para registrar a data em que a compra vencerá (ex: fatura do cartão)")
+        with col4:
+            data_venc = None
+            if usa_vencimento:
+                data_venc = st.date_input("Data de vencimento:", value=datetime.now(), format="DD/MM/YYYY")
 
         submitted = st.form_submit_button("💾 Salvar", use_container_width=True)
         if submitted:
