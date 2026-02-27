@@ -77,8 +77,8 @@ st.markdown("""
 # ════════════════════════════════════════════════════════════════════════════
 def _verificar_credenciais(usuario: str, senha: str) -> bool:
     try:
-        u = st.secrets["carlos"]["101378"]
-        s = st.secrets["carlos"]["101378"]
+        u = st.secrets["login"]["usuario"]
+        s = st.secrets["login"]["senha"]
         return usuario.strip() == u and senha == s
     except KeyError:
         # Se ainda não configurou o secrets, aceita credenciais padrão
