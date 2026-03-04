@@ -91,7 +91,26 @@ def _reescrever_planilha(df):
     sheet.clear()
     sheet.append_rows([COLUNAS], value_input_option="USER_ENTERED")
     if not df.empty:
-        sheet.append_rows(df.astype(str).values.tolist(), value_input_option="USER_ENTERED")
+        rows = []
+        for _, row in df.iterrows():
+            linha = []
+            for col in df.columns:
+                val = row[col]
+                if col == "valor":
+                    # Normaliza e grava como número
+                    s = str(val).strip()
+                    if "," in s and "." in s:
+                        s = s.replace(".", "").replace(",", ".")
+                    elif "," in s:
+                        s = s.replace(",", ".")
+                    try:
+                        linha.append(float(s))
+                    except (ValueError, TypeError):
+                        linha.append(0.0)
+                else:
+                    linha.append("" if pd.isna(val) or str(val) == "nan" else str(val))
+            rows.append(linha)
+        sheet.append_rows(rows, value_input_option="USER_ENTERED")
     _limpar_cache()
 
 
