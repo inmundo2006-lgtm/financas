@@ -8,7 +8,7 @@ from google.oauth2.service_account import Credentials
 COLUNAS = [
     "id", "data", "tipo", "categoria", "descricao", "valor",
     "status", "data_vencimento", "tipo_lancamento",
-    "parcela_atual", "total_parcelas", "id_grupo"
+    "parcela_atual", "total_parcelas", "id_grupo", "observacao"
 ]
 
 STATUS_PAGO     = "Pago"
@@ -52,6 +52,7 @@ def init_database():
         sheet.append_rows([COLUNAS], value_input_option="USER_ENTERED")
         return
     cabecalho = valores[0]
+    # Adiciona colunas faltantes (incluindo "observacao" para planilhas existentes)
     if len(cabecalho) < len(COLUNAS):
         for i, col in enumerate(COLUNAS[len(cabecalho):]):
             sheet.update_cell(1, len(cabecalho) + i + 1, col)
@@ -103,18 +104,16 @@ def _preparar_df(df):
     def _normalizar_valor(v):
         s = str(v).strip()
         if "," in s and "." in s:
-            # Formato BR: 1.234,56 → remove ponto de milhar, troca vírgula
             return s.replace(".", "").replace(",", ".")
         elif "," in s:
-            # Só vírgula: 54,59 → troca por ponto
             return s.replace(",", ".")
-        # Só ponto ou inteiro: 54.59 ou 400 → mantém
         return s
     df["valor"] = pd.to_numeric(df["valor"].astype(str).apply(_normalizar_valor), errors="coerce")
     df["id"]              = pd.to_numeric(df["id"], errors="coerce")
     df["parcela_atual"]   = pd.to_numeric(df["parcela_atual"], errors="coerce")
     df["total_parcelas"]  = pd.to_numeric(df["total_parcelas"], errors="coerce")
     df["id_grupo"]        = pd.to_numeric(df["id_grupo"], errors="coerce")
+    df["observacao"]      = df["observacao"].fillna("").astype(str)
     df = df.dropna(subset=["data", "valor"])
     df["status"]          = df["status"].replace("", STATUS_PAGO).fillna(STATUS_PAGO)
     df["tipo_lancamento"] = df["tipo_lancamento"].replace("", TIPO_NORMAL).fillna(TIPO_NORMAL)
@@ -220,22 +219,14 @@ def obter_saldo_acumulado():
 
 
 def obter_disponivel_gastar(mes, ano):
-    """
-    Quanto o usuário pode gastar hoje sem comprometer o mês selecionado.
-    Fórmula: Saldo acumulado pago até hoje − despesas pendentes/atrasadas do mês
-    """
     df = _preparar_df(_ler_dataframe().copy())
     if df.empty:
         return 0.0, 0.0, 0.0
-
-    # Saldo real: tudo que já foi pago (todos os tempos)
     pagos = df[df["status"] == STATUS_PAGO]
     saldo_atual = float(
         pagos[pagos["tipo"] == "Receita"]["valor"].sum() -
         pagos[pagos["tipo"] == "Despesa"]["valor"].sum()
     )
-
-    # Compromissos APENAS do mês/ano selecionado
     ref = df["data_vencimento"].fillna(df["data"])
     do_mes = df[
         (df["tipo"] == "Despesa") &
@@ -244,35 +235,28 @@ def obter_disponivel_gastar(mes, ano):
         (ref.dt.year == ano)
     ]
     total_compromissos = float(do_mes["valor"].sum())
-
     disponivel = saldo_atual - total_compromissos
     return disponivel, saldo_atual, total_compromissos
 
 
 def obter_saldo_anterior(mes, ano):
-    """Soma de todos os lançamentos PAGOS antes do mês/ano selecionado."""
     df = _preparar_df(_ler_dataframe().copy())
     if df.empty:
         return 0.0
-
-    # Referência de data: usa data_vencimento se disponível, senão data
     ref = df["data_vencimento"].fillna(df["data"])
     data_corte = pd.Timestamp(year=ano, month=mes, day=1)
-
-    # Lançamentos pagos OU atrasados ANTES do início do mês selecionado
     anteriores = df[
         (df["status"].isin([STATUS_PAGO, STATUS_ATRASADO])) & (ref < data_corte)
     ]
     if anteriores.empty:
         return 0.0
-
     receitas = anteriores[anteriores["tipo"] == "Receita"]["valor"].sum()
     despesas = anteriores[anteriores["tipo"] == "Despesa"]["valor"].sum()
     return float(receitas - despesas)
 
 
 def adicionar_transacao(tipo, valor, categoria, descricao, data,
-                        status=STATUS_PAGO, data_vencimento=None):
+                        status=STATUS_PAGO, data_vencimento=None, observacao=""):
     sheet = conectar()
     todos = sheet.get_all_values()
     dv = str(data_vencimento) if data_vencimento else (data if isinstance(data, str) else str(data))
@@ -280,13 +264,15 @@ def adicionar_transacao(tipo, valor, categoria, descricao, data,
         _proximo_id(todos),
         data if isinstance(data, str) else str(data),
         tipo, categoria, descricao, float(valor),
-        status, dv, TIPO_NORMAL, "", "", ""
+        status, dv, TIPO_NORMAL, "", "", "",
+        str(observacao).strip()
     ]
     _gravar_linhas([linha])
 
 
 def adicionar_conta_fixa(tipo, valor, categoria, descricao,
-                         dia_vencimento, meses_a_adicionar=12, data_primeira=None):
+                         dia_vencimento, meses_a_adicionar=12,
+                         data_primeira=None, observacao=""):
     import calendar
     sheet = conectar()
     todos  = sheet.get_all_values()
@@ -308,7 +294,8 @@ def adicionar_conta_fixa(tipo, valor, categoria, descricao,
         status = STATUS_PAGO if data_atual <= hoje else STATUS_PENDENTE
         linhas.append([
             id_base + i, str(hoje), tipo, categoria, descricao,
-            float(valor), status, str(data_atual), TIPO_FIXA, "", "", str(id_grp)
+            float(valor), status, str(data_atual), TIPO_FIXA, "", "", str(id_grp),
+            str(observacao).strip()
         ])
         prox = data_atual + relativedelta(months=1)
         try:
@@ -320,7 +307,7 @@ def adicionar_conta_fixa(tipo, valor, categoria, descricao,
 
 
 def adicionar_compra_parcelada(tipo, valor_total, categoria, descricao,
-                                n_parcelas, data_primeira):
+                                n_parcelas, data_primeira, observacao=""):
     sheet   = conectar()
     todos   = sheet.get_all_values()
     id_grp  = _proximo_id_grupo(todos)
@@ -338,13 +325,13 @@ def adicionar_compra_parcelada(tipo, valor_total, categoria, descricao,
             id_base + (p - 1), str(hoje), tipo, categoria,
             f"{descricao} ({p}/{n_parcelas})",
             float(valor_p), status, str(venc),
-            TIPO_PARCELADA, p, n_parcelas, str(id_grp)
+            TIPO_PARCELADA, p, n_parcelas, str(id_grp),
+            str(observacao).strip()
         ])
     _gravar_linhas(linhas)
 
 
 def marcar_como_pago(id_transacao, novo_valor=None):
-    """Marca como pago e opcionalmente atualiza o valor (para contas que variam)."""
     df = _ler_dataframe().copy()
     if df.empty:
         return False

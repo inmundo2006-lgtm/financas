@@ -76,11 +76,9 @@ st.markdown("""
 # LOGIN
 # ════════════════════════════════════════════════════════════════════════════
 def _verificar_credenciais(usuario: str, senha: str) -> bool:
-        
-        u = st.secrets["login"]["usuario"]
-        s = st.secrets["login"]["senha"]
-        return usuario.strip() == u and senha == s
-    
+    u = st.secrets["login"]["usuario"]
+    s = st.secrets["login"]["senha"]
+    return usuario.strip() == u and senha == s
 
 
 def _tela_login():
@@ -173,9 +171,7 @@ if pagina == "Dashboard":
     saldo_mes      = resumo["receitas"] - resumo["despesas"]
     saldo_final    = saldo_anterior + saldo_mes
 
-    # Linha 1: saldo anterior + métricas do mês
     if saldo_anterior != 0:
-        cor_ant = "normal" if saldo_anterior >= 0 else "inverse"
         st.info(
             f"💼 **Saldo transportado do período anterior:** "
             f"R$ {saldo_anterior:,.2f}"
@@ -194,13 +190,12 @@ if pagina == "Dashboard":
               delta=f"R$ {saldo_final:,.2f}" if saldo_final >= 0 else f"-R$ {abs(saldo_final):,.2f}",
               delta_color="normal" if saldo_final >= 0 else "inverse",
               help="Saldo anterior + saldo do mês atual")
-    c5.metric("⏳ Pendente",   f"R$ {pendente:,.2f}")
+    c5.metric("⏳ Pendente", f"R$ {pendente:,.2f}")
 
     if saldo_mes < 0:
         st.markdown('<div class="alerta-negativo">⚠️ Despesas acima das receitas!</div>',
                     unsafe_allow_html=True)
 
-    # ── Card "Quanto posso gastar hoje?" ────────────────────────────────────
     disponivel, saldo_atual, compromissos = obter_disponivel_gastar(mes_sel, ano_sel)
     if disponivel >= 0:
         cor   = "#00c896"
@@ -234,7 +229,6 @@ if pagina == "Dashboard":
         unsafe_allow_html=True
     )
 
-    # Alertas de vencimento
     vencer_7  = obter_a_vencer(7)
     vencer_30 = obter_a_vencer(30)
 
@@ -347,6 +341,15 @@ elif pagina == "Nova Transação":
             if usa_vencimento:
                 data_venc = st.date_input("Data de vencimento:", value=datetime.now(), format="DD/MM/YYYY")
 
+        # ── Campo de Observação ──────────────────────────────────────────────
+        observacao = st.text_area(
+            "📝 Observação:",
+            placeholder="Ex: Comprado no cartão Nubank, parcela referente a janeiro...",
+            max_chars=300,
+            height=80,
+            help="Campo opcional para anotações extras sobre esta transação."
+        )
+
         submitted = st.form_submit_button("💾 Salvar", use_container_width=True)
         if submitted:
             erros = []
@@ -363,7 +366,8 @@ elif pagina == "Nova Transação":
                         tipo=tipo, valor=valor, categoria=categoria,
                         descricao=descricao.strip(), data=str(data),
                         status=status,
-                        data_vencimento=str(data_venc) if data_venc else None
+                        data_vencimento=str(data_venc) if data_venc else None,
+                        observacao=observacao.strip()
                     )
                     st.success(f"✅ {tipo} de **R$ {valor:,.2f}** salva com sucesso!")
                     if tipo == "Receita":
@@ -382,7 +386,6 @@ elif pagina == "Contas Fixas":
     st.header("🔄 Cadastrar Conta Fixa Recorrente")
     st.caption("Gera lançamentos mensais automáticos para despesas (água, energia, internet) ou receitas (salário, aluguel recebido, etc.)")
 
-    # Tipo FORA do form para atualizar categorias dinamicamente
     tipo_fixa = st.selectbox("Tipo:", ["Despesa", "Receita"], key="tipo_fixa_sel")
     cats_despesa = ["Contas", "Moradia", "Transporte", "Saúde", "Educação", "Internet", "Telefone", "Outras Despesas"]
     cats_receita = ["Salário", "Freelance", "Aluguel Recebido", "Pensão Recebida", "Investimentos", "Outras Receitas"]
@@ -402,6 +405,15 @@ elif pagina == "Contas Fixas":
             data_primeira_input = st.date_input("Início (opcional, deixe vazio para mês atual):",
                                                 value=None, format="DD/MM/YYYY")
 
+        # ── Campo de Observação ──────────────────────────────────────────────
+        obs_fixa = st.text_area(
+            "📝 Observação:",
+            placeholder="Ex: Vence todo dia 10, débito automático Bradesco...",
+            max_chars=300,
+            height=80,
+            help="Campo opcional para anotações extras. A mesma observação será aplicada a todos os meses gerados."
+        )
+
         submitted_fixa = st.form_submit_button("🔄 Gerar Lançamentos", use_container_width=True)
         if submitted_fixa:
             if not desc_fixa.strip():
@@ -416,7 +428,8 @@ elif pagina == "Contas Fixas":
                             categoria=cat_fixa, descricao=desc_fixa.strip(),
                             dia_vencimento=int(dia_venc),
                             meses_a_adicionar=meses_fixa,
-                            data_primeira=str(data_primeira_input) if data_primeira_input else None
+                            data_primeira=str(data_primeira_input) if data_primeira_input else None,
+                            observacao=obs_fixa.strip()
                         )
                     st.success(f"✅ {meses_fixa} lançamentos de **{desc_fixa}** gerados!")
                     st.info("💡 Meses já vencidos foram marcados como Pago automaticamente.")
@@ -468,6 +481,15 @@ elif pagina == "Compras Parceladas":
         valor_parcela = valor_total / n_parcelas if n_parcelas > 0 else 0
         st.info(f"💡 Cada parcela: **R$ {valor_parcela:,.2f}**")
 
+        # ── Campo de Observação ──────────────────────────────────────────────
+        obs_parc = st.text_area(
+            "📝 Observação:",
+            placeholder="Ex: Comprado na Black Friday, cartão Itaú final 1234...",
+            max_chars=300,
+            height=80,
+            help="Campo opcional para anotações extras. A mesma observação será aplicada a todas as parcelas."
+        )
+
         submitted_parc = st.form_submit_button("💳 Gerar Parcelas", use_container_width=True)
         if submitted_parc:
             if not desc_parc.strip():
@@ -480,7 +502,8 @@ elif pagina == "Compras Parceladas":
                         adicionar_compra_parcelada(
                             tipo=tipo_parc, valor_total=valor_total,
                             categoria=cat_parc, descricao=desc_parc.strip(),
-                            n_parcelas=int(n_parcelas), data_primeira=primeira_venc
+                            n_parcelas=int(n_parcelas), data_primeira=primeira_venc,
+                            observacao=obs_parc.strip()
                         )
                     st.success(f"✅ {n_parcelas}x de R$ {valor_parcela:,.2f} geradas para **{desc_parc}**!")
                 except Exception as e:
@@ -543,10 +566,11 @@ elif pagina == "A Vencer":
         for _, row in atrasados.iterrows():
             dias_atr = (date.today() - pd.Timestamp(row["data_vencimento"]).date()).days
             c1, c2, c3 = st.columns([4, 2, 1])
+            obs_txt = f" · 📝 {row['observacao']}" if str(row.get("observacao", "")).strip() else ""
             c1.markdown(
                 f'<div class="card-atrasado">🔴 <b>{row["descricao"]}</b> — '
                 f'{row["categoria"]} — venceu há {dias_atr} dia(s) '
-                f'({pd.Timestamp(row["data_vencimento"]).strftime("%d/%m/%Y")})</div>',
+                f'({pd.Timestamp(row["data_vencimento"]).strftime("%d/%m/%Y")}){obs_txt}</div>',
                 unsafe_allow_html=True)
             c2.metric("Valor", f"R$ {float(row['valor']):,.2f}")
             with c3:
@@ -557,7 +581,7 @@ elif pagina == "A Vencer":
                 if st.button("✏️ Editar", key=f"editar_atr_{row['id']}"):
                     st.session_state[f"editando_{row['id']}"] = True
             if st.session_state.get(f"editando_{row['id']}"):
-                novo = st.number_input(f"Novo valor para {row['descricao']}:", 
+                novo = st.number_input(f"Novo valor para {row['descricao']}:",
                                         value=float(row['valor']), step=0.01, format="%.2f",
                                         key=f"nv_atr_{row['id']}")
                 if st.button("✅ Confirmar", key=f"conf_atr_{row['id']}"):
@@ -572,11 +596,12 @@ elif pagina == "A Vencer":
         for _, row in df_vencer.iterrows():
             dias_rest = (pd.Timestamp(row["data_vencimento"]).date() - date.today()).days
             label = "Vence hoje!" if dias_rest == 0 else f"em {dias_rest} dia(s)"
+            obs_txt = f" · 📝 {row['observacao']}" if str(row.get("observacao", "")).strip() else ""
             c1, c2, c3 = st.columns([4, 2, 1])
             c1.markdown(
                 f'<div class="card-vencer">🟡 <b>{row["descricao"]}</b> — '
                 f'{row["categoria"]} — vence {label} '
-                f'({pd.Timestamp(row["data_vencimento"]).strftime("%d/%m/%Y")})</div>',
+                f'({pd.Timestamp(row["data_vencimento"]).strftime("%d/%m/%Y")}){obs_txt}</div>',
                 unsafe_allow_html=True)
             c2.metric("Valor", f"R$ {float(row['valor']):,.2f}")
             with c3:
@@ -587,7 +612,7 @@ elif pagina == "A Vencer":
                 if st.button("✏️ Editar", key=f"editar_{row['id']}"):
                     st.session_state[f"editando_{row['id']}"] = True
             if st.session_state.get(f"editando_{row['id']}"):
-                novo = st.number_input(f"Novo valor para {row['descricao']}:", 
+                novo = st.number_input(f"Novo valor para {row['descricao']}:",
                                         value=float(row['valor']), step=0.01, format="%.2f",
                                         key=f"nv_{row['id']}")
                 if st.button("✅ Confirmar", key=f"conf_{row['id']}"):
@@ -653,12 +678,14 @@ elif pagina == "Histórico":
             if s == STATUS_ATRASADO: return "🔴 Atrasado"
             return s
 
-        exibir["Status"]     = exibir["status"].apply(fmt_status)
-        exibir["Modalidade"] = exibir["tipo_lancamento"]
+        exibir["Status"]      = exibir["status"].apply(fmt_status)
+        exibir["Modalidade"]  = exibir["tipo_lancamento"]
+        exibir["Observação"]  = exibir["observacao"].fillna("").replace("", "—")
+
         exibir = exibir[["id", "Data", "Data Venc.", "tipo", "categoria",
-                          "descricao", "Valor", "Status", "Modalidade"]]
+                          "descricao", "Valor", "Status", "Modalidade", "Observação"]]
         exibir.columns = ["ID", "Data", "Vencimento", "Tipo", "Categoria",
-                          "Descrição", "Valor", "Status", "Modalidade"]
+                          "Descrição", "Valor", "Status", "Modalidade", "Observação"]
 
         st.dataframe(exibir, use_container_width=True, hide_index=True)
 
